@@ -171,6 +171,9 @@ struct Mode {
     // The details' (u, v) multipliers and offsets: layers R and G in the first vector, B and A in the second.
     layer_scale: array<vec4<f32>, 2>,
     layer_offset: array<vec4<f32>, 2>,
+    // A converted car's material's finish (`car::cabin::finish_uniform`, `finish.wgsl`): x of the first the kind, 0 for
+    // none.
+    finish: array<vec4<f32>, 4>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -642,6 +645,12 @@ fn vertex(input: VertexIn) -> VertexOut {
     // not the car's): the same few points for every vertex, so not per pixel.
     if (lit_class() == 1u && v.specular.y >= CABIN_INTERIOR && in_car()) {
         out.bounce_sun = cabin_shade(cabin_seen(out));
+        // The cabin's bounce baked per vertex (`cabin_bounce`): the sky's in `bounce_sky`, the sun's toward it in `sky.x`.
+        if (CABIN) {
+            let bounce = cabin_bounce(input);
+            out.bounce_sky = bounce.rgb;
+            out.sky = vec3<f32>(bounce.a, 0.0, v.occlusion);
+        }
     }
     return out;
 }
@@ -1095,7 +1104,7 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             colour = colour * mix(vec3<f32>(1.0), sun_light(v, front, open_sky, first.rgb), near_sun * (1.0 - under_cloud));
         }
     }
-    colour = backlit(colour, first.rgb, v.uv0, night, 1.0);
+    colour = backlit(colour, first.rgb, v.uv0, 1.0);
     if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
         discard;
     }
@@ -1116,29 +1125,37 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     return vec4<f32>(graded(fogged(colour, v.world)), alpha);
 }
 
-// A texel's backlight (ours): by night, and at dusk as much as the lamps light the stage, the texel glows in the light
-// of its emissive mask (the RBRHUD gauges' `emissive_mask`, `rbr_render::dials`; the start board's digits,
-// `rbr_render::start_board`) at `DIAL_GLOW`, and the start board's lit lamps (`mode.glow.z`) at any hour at an LED
-// display's luminance (`SIGNAL_LUMINANCE`) in their signal's colour: the mask's colour (the bulbs' pools on analog
-// faces) plus its alpha in white (displays, warning lamps). In a mirror's pass (`frame.night.z`) the light is what a
+// A texel's backlight (ours): the texel glows in the light of its emissive mask (the RBRHUD gauges' `emissive_mask`,
+// `rbr_render::dials`; a car texture's own mask; the start board's digits, `rbr_render::start_board`), the mask's colour
+// (the bulbs' pools on analog faces) plus its alpha in white (displays, warning lamps), always on and at its own
+// luminance (`mode.glow.z`, `textures::GlowKind`) and added to the light the face reflects, so the exposure decides what
+// shows (user's call, 2026-11-25; was by night and at dusk only, the brighter of the two): a dial's backlight at `DIAL_LUMINANCE`, which the day's light drowns; a display (a gauge with
+// no needle: digits, bars, lamps) at `DISPLAY_LUMINANCE` by day, dimmed to a dial's as the lamps come on
+// (`frame.dusk.w`), as a dash's light sensor dims it; the start board's lit lamps at an LED display's
+// (`SIGNAL_LUMINANCE`) in their signal's colour. In a mirror's pass (`frame.night.z`) the light is what a
 // recessed face shows past its bezel at `facing`, the cosine to the eye (`DIAL_RECESS`): the dials are flat in the
 // meshes, and the windscreen, seeing them from some 75 degrees off, mirrored every face whole at night (Audi quattro
 // A2, Helette). The main view sees the dials about head on, and the lamps standing out of the dash (the A2's orange
 // dome) glow on their sides.
-fn backlit(colour: vec3<f32>, texel: vec3<f32>, uv: vec2<f32>, night: bool, facing: f32) -> vec3<f32> {
-    let level = select(select(frame.dusk.w, 1.0, night), 1.0, mode.glow.z != 0.0);
-    if (mode.glow.x == 0.0 || level <= 0.0) {
+fn backlit(colour: vec3<f32>, texel: vec3<f32>, uv: vec2<f32>, facing: f32) -> vec3<f32> {
+    if (mode.glow.x == 0.0) {
         return colour;
     }
     let mask = textureSampleLevel(glow_texture, texture_sampler, uv, 0.0);
     let backlight = mask.rgb + vec3<f32>(mask.a * mode.glow.y);
     let c = clamp(facing, 1e-3, 1.0);
     let shown = select(1.0, clamp(1.0 - DIAL_RECESS * sqrt(1.0 - c * c) / c, 0.0, 1.0), frame.night.z != 0.0);
-    if (mode.glow.z != 0.0) {
+    if (mode.glow.z == 1.0) {
         return max(colour, shining(backlight, texel, SIGNAL_LUMINANCE) * shown);
     }
-    return max(colour, texel * backlight * DIAL_GLOW * level * shown);
+    let dusk = select(frame.dusk.w, 1.0, frame.night.x != 0.0);
+    let l = select(DIAL_LUMINANCE, mix(DISPLAY_LUMINANCE, DIAL_LUMINANCE, dusk), mode.glow.z == 2.0);
+    return colour + texel * backlight * l * pre_exposure() * shown;
 }
+
+// A display's luminance by day, cd/m2 (ours): a sunlight-readable dash's full brightness. At 300 (a dimmed screen) the
+// DiRT Impreza's bar graph stayed a dim amber under the single exposure; at 1000 it reads as lit.
+const DISPLAY_LUMINANCE: f32 = 1000.0;
 
 // The start board's lit lamps' luminance, cd/m2 (ours): a semi-outdoor LED display's, as start clocks are. A traffic
 // signal's 12000 (EN 12368: about 400 cd over a 200 mm lens) went past the tone curve's peak in sunlight, whose chroma
@@ -1191,9 +1208,18 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // A converted car's normal map (`stage::Surface::normal`, ours) bends the normal the light and the reflections take; its
     // diffuse's alpha, where the draw is not blended, is then the specular strength (`gloss`).
     var gloss = 1.0;
-    if (bump_draw()) {
+    // A carbon finish's map in the normal slot is its weave's direction (`carbon_fibre`), not a normal map.
+    var fibre = vec3<f32>(0.0);
+    if (finish_carbon()) {
+        fibre = carbon_fibre(v, n);
+    } else if (bump_draw()) {
         n = bumped(v) * select(-1.0, 1.0, front);
         gloss = select(first.a, 1.0, mode.alpha_test != 0u);
+    } else if (exterior_finish()) {
+        // A class's finish (`car::shading::class_finish`: an RSF car's rim) on a texture with no specular: from its
+        // brightness, the rubber's to the metal's (`WHEEL_LUMA`).
+        let metal = smoothstep(WHEEL_LUMA.x, WHEEL_LUMA.y, dot(first.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)));
+        gloss = mix(WHEEL_SPECULAR.x, WHEEL_SPECULAR.y, metal);
     }
     // The car's shadow takes only the sun's term (and a crack's glint): faces turned from the sun skip it.
     var shadowed = 0.0;
@@ -1307,7 +1333,11 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (DEBUG_VIEW != 0u) {
             return vec4<f32>(vec3<f32>(cabin_debug(v, n, shadowed, under_cloud, outside)), 1.0);
         }
-        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside);
+        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside, gloss, fibre);
+    } else if (exterior_finish() && day_lit()) {
+        // A finish's highlight in place of the class's (`finish.wgsl`).
+        let sun = finish_sun(v, n, view, gloss, fibre, EXTERIOR_PHONG) * frame.day_sun.rgb * sunlit;
+        shaded = pow(pow(lit(colour, n, view, sunlit, around.rgb, v.world, 0.0), vec3<f32>(2.2)) + sun, vec3<f32>(1.0 / 2.2));
     } else {
         shaded = lit(colour, n, view, sunlit, around.rgb, v.world, gloss);
     }
@@ -1316,8 +1346,15 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // other classes reflect where the diffuse alpha is (`CarPaint`: the reflection times `t0.a`).
     let nv = clamp(dot(n, view), 0.0, 1.0);
     var f = clamp(0.125 + 0.875 * pow(1.0 - nv, 5.0), mode.fresnel.x, mode.fresnel.y) * mode.fresnel.z;
-    // With the day's light a dielectric's (Schlick, F0 0.04) where the class reflects at all.
-    let physical = day_lit();
+    // With the day's light a dielectric's (Schlick, F0 0.04) where the class reflects at all. In the cockpit the paint
+    // seen through the glass (the bonnet and wings: the body outside the interior set, and in it the paint open to the
+    // sky as `cabin_light` takes it) takes the outside view's clear coat too. Not `cabin_open`'s cone: a bonnet's
+    // grazing reflection, toward the horizon ahead, lies outside its cone about the sky it sees, and was cut.
+    var cockpit_coat = 0.0;
+    if (CABIN && inside && day_on() && lit_class() == 1u && mode.fresnel.z != 0.0) {
+        cockpit_coat = select(1.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), cabin_face);
+    }
+    let physical = day_lit() || cockpit_coat > 0.0;
     if (physical) {
         f = select(0.0, 0.04 + 0.96 * pow(1.0 - nv, 5.0), mode.fresnel.y * mode.fresnel.z > 0.0);
     }
@@ -1348,15 +1385,27 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         // (`cabin_sheen`), whatever its class's Fresnel (the Clio Rally3's dash, `Kf` 1 from 0, read as glass).
         if (cabin_face) {
             let paint = select(0.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), mode.fresnel.z != 0.0);
-            let open = shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
-            shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
+            // With the day's light the coat takes the open paint's reflection.
+            let open = select(shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n)), vec3<f32>(0.0), physical);
+            if (finished()) {
+                let seen = cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
+                shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, seen, shaded));
+                shine = open * paint;
+            } else {
+                shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
+            }
+        } else if (exterior_finish()) {
+            // A finish's reflection in place of the class's and of the clear coat (`finish.wgsl`).
+            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, visible, shaded));
+            shine = vec3<f32>(0.0);
         }
         colour = shaded + shine;
         // With the day's light the clear coat (`COAT_ROUGHNESS`).
         if (physical) {
             let sky_dim = mix(1.0, WET_SKY, film);
             let roughness = COAT_ROUGHNESS * (1.0 - film * (1.0 - WET_ROUGHNESS));
-            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0) * alpha * clean;
+            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0 && !exterior_finish()) * alpha * clean
+                * select(1.0, cockpit_coat, inside);
             if (lit_class() == 1u && car_look()) {
                 coat = min(coat * COAT_STRENGTH, 1.0);
             }
@@ -1373,7 +1422,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
                 mirrored = mix(sharp, vec3<f32>(dot(shine, vec3<f32>(0.333))), chrome / max(chrome + glass, 1e-4));
                 coat = min(max(coat, glass) + chrome * (1.0 - glass), 1.0);
             }
-            if (metal > 0.0) {
+            if (metal > 0.0 && !exterior_finish()) {
                 let rim = RIM_METAL * metal * clean;
                 let shine = paint_mirrored(reflect(-view, nr), RIM_ROUGHNESS);
                 mirrored = mix(mirrored, vec3<f32>(dot(shine, vec3<f32>(0.333))), rim / max(rim + coat, 1e-4));
@@ -1411,7 +1460,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         let emitted = textureSampleLevel(glow_texture, texture_sampler, v.uv0, 0.0).rgb;
         colour = max(colour, lamp_shown(select(first.rgb, emitted, mode.glow.x != 0.0), v.world, view));
     } else {
-        colour = backlit(colour, first.rgb, v.uv0, night, dot(n, view));
+        colour = backlit(colour, first.rgb, v.uv0, dot(n, view));
     }
     // The scrape (`CarPaint`, `CarPaintInt`): the scrape texel times the diffuse light (`t3 * v0`, no highlight or
     // reflection) replaces the paint by `sat(v0.w * t3.a)`, `v0.w` being the vertex's damage weight / 100.
@@ -1805,11 +1854,16 @@ const SPATTER_SPOTS: f32 = 0.35;
 // A wheel's texels by their luminance (ours, with the day's light): below the first the tyre's rubber, whose albedo is
 // `RUBBER_ALBEDO` of the texture's and whose spatter `RUBBER_SPATTER` of the rim's; above the second the rim's metal,
 // which mirrors the surroundings by `RIM_METAL` (a bright metal's reflectance, rough by `RIM_ROUGHNESS`) in the
-// cube's grey, between them the blend.
+// cube's grey, between them the blend. A rim (`CarRim`) reflects by its finish instead (`car::shading::class_finish`,
+// DiRT's wheel), the tyre's wall by this.
 const WHEEL_LUMA: vec2<f32> = vec2<f32>(0.3, 0.55);
 const RUBBER_ALBEDO: f32 = 0.6;
 const RUBBER_SPATTER: f32 = 0.5;
 const RIM_METAL: f32 = 0.55;
+// The specular of a wheel's rubber and of its metal as DiRT Rally's wheel maps hold it (the texture's alpha over its
+// brightness: the Impreza's, Escort's and 306's, 0.0 to 0.25 on the dark texels, 0.5 to 0.6 on the bright), for a
+// rim with no specular map (`car::shading::class_finish`).
+const WHEEL_SPECULAR: vec2<f32> = vec2<f32>(0.1, 0.55);
 // The tyre's dust band (ours): heights over the ground, metres, where the rubber's dirt falls from all to
 // `RUBBER_DIRT_HIGH` of it.
 const TYRE_BAND: vec2<f32> = vec2<f32>(0.08, 0.3);

@@ -1274,7 +1274,7 @@ not ported.
   Helette 22:30: the gauge cluster mirrored over the road). In a mirror's pass a backlit texel shows what a recessed
   face does past its bezel, `1 - DIAL_RECESS tan` of the angle off its face (0.25: 7 % at 75 degrees); the main view
   is unchanged (the A2's dash byte-identical; a recess there hollowed the orange dome lamp that stands out of the
-  dash). The dials are 25 cd/m2 (`DIAL_GLOW` over `NIGHT_PRE_EXPOSURE`), their 8 % reflection as bright as the lit
+  dash). The dials are about 32 cd/m2 (`DIAL_LUMINANCE`), their 8 % reflection as bright as the lit
   road, and local exposure takes the dials themselves down: the pair read alike. Left: the dome's reflection (a lit
   lamp), the Clio Rally3's display at the top of the glass (seen 45 degrees off from above, physical). The bulkhead (`glass::bulkhead`, with
   `windscreen`): a dark strip hanging 0.6 m from the glass's foot in the interior set, drawn as its first opaque lit
@@ -1775,7 +1775,55 @@ sky's share through two clear faces, `(1 - F)^2` over the cosine-weighed hemisph
 former 0.85 was this); the sun's from the blended panes facing it, weighed by area toward it, per measured direction
 (`SunIn::through`; 208 at 19:30 about 0.8). Left heuristic: `CABIN_SHADE`, `CABIN_GAUGE_LEAST`.
 
-Exposure in the cockpit (user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
+Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin_bounce`): each vertex's 64 rays
+(`Grid::sky_hits`) note the cabin face they meet on its front (a back hit, a door's outer skin from inside, gives
+nothing: counted, it lit the DiRT Escort's cabin with the skins' outside light); three bounces of the faces' albedo
+times their sky share, and of their sun as `c0 + c1 . d` over 64 directions past the car, give each vertex its sky
+bounce (rgb, `bounce[1]`) and its sun bounce (`sky_dir`, `bounce[0]`, turned with the car), scaled to the measured mean
+sun (`SunIn::bounce_scale`: the two bands smear the window-only sun over all directions). In place of the closed
+room's bounce, `CABIN_WINDOW_LIGHT`, `CABIN_BOUNCE_SHARE` and the vertex near occlusion (`cabin_irradiance`; the
+occlusion is left for `--debug-view` 2). The in-car view takes the outside's exposure (the cabin at 1/5 of its meter,
+`IN_CAR_WEIGHT`): the cabin's own exposure, its taper and its composite pipeline are gone. Against DiRT screenshots
+(Gabiria 15:00, lower third): Fiesta 38 against DiRT's 34, Escort RS 32 against 31 (were 53 and 43); one exposure
+without the bounce crushed the Fiesta's dash (32, its detail gone). 14 cockpit scenes (day, golden, overcast, fog,
+rain, snow, night; stock and DiRT cars), lower third: day 621 DiRT Fiesta 64 to 39, golden 532 Clio 54 to 41, fog Alpes
+GC8 56 to 45, snow Peklo DiRT Escort 42 to 28, rain unchanged (the cabin metered no darker), nights within 2 levels.
+Tried and dropped (user): the cabin lifted by 0.5 or 0.7 of its metered gap to the outside (Far Cry 5's GI-based local
+exposure, McAuley 2018).
+
+Gauge lights always on (user's call, 2026-11-25, `backlit`): every emissive mask lights its face at any hour at a
+luminance of its own, added to the light the face reflects, so the exposure decides what shows (was by night and at dusk
+only, the brighter of the two). A needle gauge's mask, a car texture's own and the start board's digits are a dial's
+backlight, about 32 cd/m2 (`DIAL_LUMINANCE`, the former night value), drowned by day; a gauge pack config with no needle
+(digits, bars, lamps; `Image::Dial::display`: 57 of the 100 RSF cars with packs, every DiRT display) a display's, 1000
+cd/m2 by day (`DISPLAY_LUMINANCE`, a sunlight-readable dash), dimmed to a dial's along `frame.dusk.w` as a dash's light
+sensor dims it. Day frames at 13:00 to golden hour: the DiRT Impreza's bar graph, dark under its hood, reads lit amber
+(at 300 a dim amber); the 306's gear LED glows red, its LCD face warms a little; the i20 WRC 2020's and Clio Rally3's
+screens a little brighter; the Escort's needle dials unchanged. Nights (Impreza, 306, i20, Clio, Escort) within 23 of
+255 of before, where the reflected light now adds.
+
+Cabin finishes (2026-11-25, `finish_mirror`, `finish.wgsl`): a converted car's interior material may carry DiRT Rally's own shading
+constants (ours, `car_parts::finish`: `Finish` plain, flock or carbon, `FinishFresnel`, `FinishEnvironment`,
+`FinishPhong`, `FinishNoise`, `FinishCarbon`, written by `rbr-dirt-rally`; `car::cabin::finish_uniform`, `mode.finish`).
+They follow DiRT's DX11 interior shaders as disassembled (`share/data/shaderpack/dx11/shaderpack.pssg`, DXBC through
+libvkd3d-shader, names from the RDEF chunk): `interior.fx` reflects `spec * lerp(FresnelMin, FresnelMax, min((1 -
+n.v)^FresnelPower, 1)) * EnvironmentColour` of a cube (sharp or `_soft`) and adds the sun as `pow(sat(R.L), PhongPower)`
+at that strength times `PhongScale`, `PhongColour`, the shadow and occlusion squared, its diffuse sun halved;
+`interior_flock.fx` (suede) weighs both by a fuzz `(1 - (n.v)^0.8)^2 * noise(uv * NoiseSize) * (1 - sat(-n.y))` and
+lerps the colour toward white by the fuzz times the sun's diffuse; `interior_carbon.fx` adds a Kajiya-Kay fibre highlight
+along `TCarbonVectorMap` (red, blue) and a lacquer at `FresnelMin`. All three read `TOcclusionMap` on the second UVs. Ours:
+the reflection is what the face sees of the outside through the windows (`cabin_open`) at the material's strength,
+blended over the lit texel in linear light, sharp `FINISH_BLUR.x` or soft `.y` cube levels, a soft one 70 % grey;
+the sun's Phong at `CABIN_PHONG` 2 (DiRT's diffuse sun is halved); the fuzz white at half the sun; the fibre direction from
+the bump slot in the uv's screen-space frame (`carbon_fibre`, never used as a normal). Converted faces with a normal map
+drop the game's -3 mip bias (`car::shading::draw_state`: 2048 to 4096 atlases and a weave repeated 300 to 500 times
+alias at it). Faces without a finish (every RSF car) are unchanged. Frames (Escort, Impreza, 306; day, golden, night),
+with the converter's occlusion now on its own layout: the Impreza's dash top lost its scrambled-AO pattern and reads a
+plain grey with the sky's sheen (DiRT's `Matt`, Fresnel 0.2 to 1 at grazing); the Escort's Sparco spokes are satin (bare
+metal 0.2 to 0.3), its painted cage and the carbon mirror the sky; the 306's dash and wheel are clean of blotches; by
+night the 306's metal spoke mirrors the headlit fog (it was black).
+
+Exposure in the cockpit (until 2026-11-25, now one exposure, above; user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the
 eye adapts to the dash when it looks there. The outside's meter counts the cabin at 1/5 (`IN_CAR_WEIGHT`): at 1/2 the
 dark cabin held the outside 1.5 to 2 stops over (Escort road 168 of 255; metered alone 91). The cabin takes its own
@@ -1820,6 +1868,38 @@ under the glass lit, binnacles, footwells and cage roofs dark, the GC8's blue ca
 scene pass (RX 9060 XT) 3.35 to 2.98 ms on 621 i20, 2.67 to 2.64 on Alpes GC8: the cabin's depth hides the stage
 behind the dash. Tried and dropped: the near occlusion at twice its weight on the bounce too (recessed dash faces
 black), the original textures in place of the upscaler's (grainier, no less flat).
+
+Cockpit clear coat (2026-11-25, `cockpit_coat` in `shader.wgsl`): by day the paint seen from the cockpit (the body
+outside the interior set, and in it paint open to the sky by `CABIN_OUT`) takes the outside view's clear coat (Schlick,
+`environment_reflectance` at `COAT_ROUGHNESS`, `COAT_STRENGTH`, `paint_mirrored`) in place of the game's reflection; all
+cars. Without `cabin_open`: its cone about the sky the bonnet sees left out the bonnet's grazing reflection toward the
+horizon ahead, so the bonnet read flat (debug view: open share 1, cone 0 over most of the DiRT Impreza's bonnet). Not in
+the cockpit: rain on the paint (`wet_paint`), the body's occlusion. Night unchanged.
+
+Surroundings cube in the cockpit (2026-11-25, `update_reflection`): at `--detail ultra` (the launcher's "Sharper shadows
+and reflections") by day the car-centred cube is drawn in the cockpit too (as outside at ultra: 256 texels, a face a
+frame; not measured in the cockpit), so the bonnet's coat and the cabin's finishes mirror what the outside view's paint
+does; at high the probes. Not `--reflections`: the launcher offers it as the wet roads' setting.
+The 306 Maxi's black bonnet light rig (paint) at 621 by day reads glossy, mirroring the sky ahead; with the probes it
+mirrored the blurred trees.
+
+Exterior finishes (2026-11-25, `finish.wgsl`, shared with the cabin's): DiRT's exterior pixel shaders as disassembled
+(`car_basic.cg.fp_*`): paint, Shiny Metal (`carpaint_metallic.fx`), wheel and lights pod lerp the lit colour toward the
+untinted cube by `lerp(FresnelValues.y, .z, f) * sat(2 * spec)`, `f` a steep sigmoid in n.v whose packing of the fx's
+min, max and power is not read (ours: the interior's power curve on the min and max); a metallic flake toward the sun's
+colour by `pow(R.L, 10)` where the specular is past 0.5; the pod's reflection times `sat(1.8 * lit colour)` (linear);
+`car_matt.fx` a Phong highlight alone (`SpecularHighlightPower`, `...Strength`); discs, grills and suspension neither,
+and `EnvironmentColour` is read by none. The converter's kinds `exterior` and `gated` (`FinishSpecular` the gain on the
+texel, 2 times the reference it was written with) take the reflection in the outside view's light in place of the
+class's and of the clear coat, the sun's lobe at `EXTERIOR_PHONG` 0.2 (not calibrated); the paint keeps the clear coat.
+The interior's kinds stay in the cabin's light only: the outside's copy of the cabin (`e_internal`) has no cabin bake,
+and with the exterior path its pillars mirrored the sky. An RSF car's rim (`CarRim`, no finish of its own) takes DiRT's
+wheel (`car::shading::class_finish`: Fresnel 0.1 to 0.5, flake power 10, gain 2) with its specular from the texel's
+brightness over `WHEEL_LUMA`, `WHEEL_SPECULAR` 0.1 to 0.55 (DiRT's wheel maps: 0 to 0.25 dark, 0.5 to 0.6 bright on the
+Impreza, Escort, 306), in place of `RIM_METAL`'s grey mirror (0.55 at any angle), which the tyre's wall keeps. Seen: the
+Escort Cosworth's white rims a little less white face on, sharper; the GDA Impreza's gold spokes a sheen; i20 and Evo IX
+barely change (dark rims). The other classes take no finish: they say too little of what a part is made of. Seen: the Impreza's gold wheels mirror the sky in the spokes,
+the lamp pods stay dark; trim changes are small, as DiRT's own constants make them.
 
 Interior sheen (2026-10-31, `cabin_sheen`): every cabin face but paint open to the sky (the bonnet through the glass,
 `CABIN_OUT`) reflects as a low-gloss plastic, `environment_reflectance` at roughness 0.8 (2 to 3 %) of the cube's

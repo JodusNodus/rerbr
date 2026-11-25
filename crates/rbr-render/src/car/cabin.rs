@@ -22,10 +22,12 @@
 //! II's `i_mirror_*`). Here it mirrors the surroundings (`cabin_mirror` in `cabin.wgsl`), as the interior's opaque faces
 //! of the glass class do (the BMW M3 E30's `i_body_tukor`).
 
+use super::cabin_bounce;
 use crate::damage::MeshDamage;
 use crate::parallel::in_parallel;
 use crate::stage::{Draw, Image, Mesh, Stage, StageTexture, TextureRef, TextureSet, Vertex};
 use glam::{IVec3, Mat4, Vec2, Vec3};
+use rbr_formats::car_parts::{Finish, FinishKind};
 use rbr_formats::rbrhud::{self, Atlas, Kind};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -63,21 +65,24 @@ impl Mirror {
 /// The grid's cell, metres.
 const VOXEL: f32 = 0.025;
 /// Rays over each vertex's hemisphere.
-const RAYS: usize = 64;
+pub(super) const RAYS: usize = 64;
 /// How far a ray looks, metres: past the cabin's width, so a ray that has not met the car by then is out of it.
 const REACH: f32 = 2.5;
 /// Where a ray starts, off its own face along the normal, metres (two cells: the face's own cells do not shade it).
-const LIFT: f32 = 2.0 * VOXEL;
+pub(super) const LIFT: f32 = 2.0 * VOXEL;
 /// How far the near occlusion looks, metres ([`Grid::sky`]): the cabin's own faces within it close a face in (the
 /// binnacle's hood over the dials, the footwells), each by how near it lies.
 const NEAR: f32 = 0.3;
 
-/// The car's opaque faces in cells.
-struct Grid {
+/// The car's opaque faces in cells, each cell the index of a face in it (the triangles' order), [`EMPTY`] for none.
+pub(super) struct Grid {
     low: Vec3,
     size: IVec3,
-    solid: Vec<bool>,
+    solid: Vec<u32>,
 }
+
+/// A cell no face lies in.
+const EMPTY: u32 = u32::MAX;
 
 impl Grid {
     /// The cells of `triangles`, or `None` without any.
@@ -87,9 +92,9 @@ impl Grid {
         })?;
         let low = low - Vec3::splat(2.0 * VOXEL);
         let size = ((high - low) / VOXEL).ceil().as_ivec3() + 2;
-        let mut grid = Grid { low, size, solid: vec![false; (size.x * size.y * size.z) as usize] };
-        for &[a, b, c] in triangles {
-            grid.fill(a, b, c);
+        let mut grid = Grid { low, size, solid: vec![EMPTY; (size.x * size.y * size.z) as usize] };
+        for (face, &[a, b, c]) in triangles.iter().enumerate() {
+            grid.fill(a, b, c, face as u32);
         }
         Some(grid)
     }
@@ -100,32 +105,32 @@ impl Grid {
             .then(|| (cell.x + self.size.x * (cell.y + self.size.y * cell.z)) as usize)
     }
 
-    /// Marks the cells of triangle `a b c`, sampled at half a cell.
-    fn fill(&mut self, a: Vec3, b: Vec3, c: Vec3) {
+    /// Marks the cells of triangle `a b c`, face `face`, sampled at half a cell.
+    fn fill(&mut self, a: Vec3, b: Vec3, c: Vec3, face: u32) {
         let longest = (b - a).length().max((c - a).length()).max((c - b).length());
         let steps = (longest / (0.5 * VOXEL)).ceil().max(1.0) as u32;
         for i in 0..=steps {
             for j in 0..=steps - i {
                 let p = a + (b - a) * (i as f32 / steps as f32) + (c - a) * (j as f32 / steps as f32);
                 if let Some(k) = self.index(p) {
-                    self.solid[k] = true;
+                    self.solid[k] = face;
                 }
             }
         }
     }
 
     /// Whether a ray from `from` along `dir` leaves the car without meeting a face.
-    fn open(&self, from: Vec3, dir: Vec3) -> bool {
+    pub(super) fn open(&self, from: Vec3, dir: Vec3) -> bool {
         self.hit(from, dir).is_none()
     }
 
-    /// How far a ray from `from` along `dir` goes before it meets a face, `None` if it leaves the car.
-    fn hit(&self, from: Vec3, dir: Vec3) -> Option<f32> {
+    /// How far a ray from `from` along `dir` goes before it meets a face, and the face, `None` if it leaves the car.
+    fn hit(&self, from: Vec3, dir: Vec3) -> Option<(f32, u32)> {
         let step = 0.5 * VOXEL;
         let mut t = 0.0;
         while t < REACH {
             match self.index(from + dir * t) {
-                Some(k) if self.solid[k] => return Some(t),
+                Some(k) if self.solid[k] != EMPTY => return Some((t, self.solid[k])),
                 Some(_) => {}
                 None => return None,
             }
@@ -138,14 +143,23 @@ impl Grid {
     /// the [`RAYS`] directions, each that meets the car counted zero. The mean's length over the share says how
     /// gathered the open directions are: 2/3 for the whole hemisphere, toward 1 for a narrow window. Then the near
     /// occlusion: the mean over the rays of how much of [`NEAR`] the face each meets leaves, 0 to 1.
+    #[cfg(test)]
     fn sky(&self, p: Vec3, normal: Vec3) -> (f32, Vec3, f32) {
+        let (sky, seen, near, _) = self.sky_hits(p, normal, &[]);
+        (sky, seen, near)
+    }
+
+    /// [`Grid::sky`] and the faces the rays that do not get out meet, one per ray: a face's index where the ray meets
+    /// its front (`normals` by face, toward the ray), [`EMPTY`] where it meets a face's back or one past `normals` (the
+    /// back of a door's outer skin is not the skin's sunlit side).
+    fn sky_hits(&self, p: Vec3, normal: Vec3, normals: &[Vec3]) -> (f32, Vec3, f32, Vec<u32>) {
         let n = normal.normalize_or_zero();
         if n == Vec3::ZERO {
-            return (1.0, Vec3::ZERO, 0.0);
+            return (1.0, Vec3::ZERO, 0.0, Vec::new());
         }
         let (t, b) = n.any_orthonormal_pair();
         let from = p + n * LIFT;
-        let (mut open, mut seen, mut near) = (0, Vec3::ZERO, 0.0);
+        let (mut open, mut seen, mut near, mut hits) = (0, Vec3::ZERO, 0.0, Vec::new());
         for k in 0..RAYS {
             // A spiral over the disc, lifted onto the hemisphere: cosine-weighted.
             let s = (k as f32 + 0.5) / RAYS as f32;
@@ -156,15 +170,19 @@ impl Grid {
                     open += 1;
                     seen += dir;
                 }
-                Some(d) => near += (1.0 - (d + LIFT) / NEAR).max(0.0),
+                Some((d, face)) => {
+                    near += (1.0 - (d + LIFT) / NEAR).max(0.0);
+                    let front = normals.get(face as usize).is_some_and(|m| m.dot(dir) < 0.0);
+                    hits.push(if front { face } else { EMPTY });
+                }
             }
         }
-        (open as f32 / RAYS as f32, seen / RAYS as f32, near / RAYS as f32)
+        (open as f32 / RAYS as f32, seen / RAYS as f32, near / RAYS as f32, hits)
     }
 }
 
 /// Whether `draw` writes depth and does not blend (the glass and the cut-out plastic let light in).
-fn opaque(draw: &Draw) -> bool {
+pub(super) fn opaque(draw: &Draw) -> bool {
     draw.state.depth_write && !draw.state.blend
 }
 
@@ -229,11 +247,16 @@ pub fn bake(
         .iter()
         .flat_map(|m| m.vertices.iter().map(|v| (Vec3::from(v.position), Vec3::from(v.normal))))
         .collect();
-    let baked = in_parallel(&points, |&(p, n)| grid.sky(p, n));
-    let skies: Vec<(f32, Vec3)> = baked.iter().map(|&(sky, seen, _)| (sky, seen)).collect();
-    let mut nears = baked.iter().map(|&(_, _, near)| near);
+    let normals = cabin_bounce::normals(interior);
+    let baked = in_parallel(&points, |&(p, n)| grid.sky_hits(p, n, &normals));
+    let skies: Vec<(f32, Vec3)> = baked.iter().map(|&(sky, seen, ..)| (sky, seen)).collect();
+    let nears: Vec<f32> = baked.iter().map(|&(_, _, near, _)| near).collect();
+    let hits: Vec<Vec<u32>> = baked.into_iter().map(|(.., hits)| hits).collect();
+    let mut nears = nears.into_iter();
     let panes: Vec<(Vec3, f32)> = interior.iter().chain(exterior).flat_map(panes).collect();
-    let sun_in = SunIn::measure(&grid, interior, &skies, &panes, textures);
+    let (bounced, fitted) = cabin_bounce::bake(&grid, interior, &skies, &hits, textures);
+    let sun_in = SunIn::measure(&grid, interior, &skies, &panes, fitted);
+    let mut bounced = bounced.into_iter();
     let mirrors: Vec<Option<Mirror>> = (0..interior.len()).map(|k| damage.get(k).and_then(|d| d.mirror)).collect();
     let glass_parts = mirrors.contains(&Some(Mirror::Glass));
     let mut skies = skies.into_iter();
@@ -246,6 +269,9 @@ pub fn bake(
                 let near = nears.next().unwrap_or(0.0);
                 vertex.specular[2] = 1.0 - sky;
                 vertex.occlusion = near;
+                if let Some(bounce) = bounced.next() {
+                    *vertex = cabin_bounce::packed(*vertex, bounce);
+                }
                 seen
             })
             .collect();
@@ -273,27 +299,53 @@ pub fn bake(
     Some(sun_in)
 }
 
+/// A converted car's material's finish (`rbr_formats::car_parts::Finish`, DiRT Rally's shaders' constants) as
+/// `finish.wgsl` reads it (`mode.finish`): `[kind (1 plain, 2 flock, 3 carbon, 4 gated, 5 exterior), Fresnel min, max, power]`,
+/// `[environment rgb, blur (-1: no reflection)]`, `[Phong power, Phong colour times its scale]`, `[carbon strength,
+/// power, falloff power, flock noise size]` (not a carbon: `[specular gain, 0, 0, noise size]`); zero for a face with
+/// none.
+pub fn finish_uniform(finish: Option<&Finish>) -> [[f32; 4]; 4] {
+    let Some(f) = finish else { return [[0.0; 4]; 4] };
+    let kind = match f.kind {
+        FinishKind::Plain => 1.0,
+        FinishKind::Flock => 2.0,
+        FinishKind::Carbon => 3.0,
+        FinishKind::Gated => 4.0,
+        FinishKind::Exterior => 5.0,
+    };
+    let [power, scale, r, g, b] = f.phong;
+    // The last row: a carbon's weave, else the specular's gain; the flock's noise.
+    let [x, y, z] = if f.kind == FinishKind::Carbon { f.carbon } else { [f.specular, 0.0, 0.0] };
+    [
+        [kind, f.fresnel[0], f.fresnel[1], f.fresnel[2]],
+        f.environment.unwrap_or([0.0, 0.0, 0.0, -1.0]),
+        [power, scale * r, scale * g, scale * b],
+        [x, y, z, f.noise],
+    ]
+}
+
 /// How light gets into the cabin (ours), means over the interior set's opaque faces by area, each weighed by how far it
 /// is inside the cabin ([`inside`]): the sun on each by the sun's direction in the car's model space, `n.l` where the
 /// sun reaches it past the car's opaque faces, measured at load for [`SUN_DIRECTIONS`] directions over the sphere from
 /// [`SUN_FACES`] of the faces, with the share of the sun the glass lets through from each (its panes weighed by their
 /// area toward the sun, [`pane_through`]; 1 with no glass that way, an open cockpit); the share of the sky each sees
-/// and where it sees it ([`Grid::sky`]); and their linear albedo per channel, the texel at the face's middle times its
-/// vertex colour as `shader.wgsl` shades it. The light that comes in lights the rest of the cabin back off its faces
-/// (`cabin.wgsl`): the roof lining over a sunlit dash or seat, the footwells. The interior set holds the body seen
-/// through the glass too, which takes in light the cabin does not: counted, it took the Clio Rally3's sky share from
-/// 0.055 to 0.361, the bounce 1.5 to 2.7 stops too bright; the BMW M3 E30's green livery, half of its area, turned
-/// the bounce teal.
+/// and where it sees it ([`Grid::sky`]). The interior set holds the body seen through the glass too, which takes in
+/// light the cabin does not: counted, it took the Clio Rally3's sky share from 0.055 to 0.361.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SunIn {
     directions: Vec<Vec3>,
     lit: Vec<f32>,
     through: Vec<f32>,
-    /// The mean sky share, the mean of where the faces see it (model space) and the mean albedo.
+    /// The mean sky share and the mean of where the faces see it (model space).
     pub sky: f32,
     pub seen: Vec3,
-    pub albedo: Vec3,
+    /// The faces' mean sun as the bounce's bake fitted it ([`cabin_bounce`]), by which the vertices' sun bounce is
+    /// scaled to the measured mean ([`SunIn::bounce_scale`]).
+    fitted: cabin_bounce::Linear,
 }
+
+/// The most [`SunIn::bounce_scale`] gives.
+const BOUNCE_SCALE_MOST: f32 = 4.0;
 
 /// The directions [`SunIn`] measures.
 const SUN_DIRECTIONS: usize = 128;
@@ -307,7 +359,7 @@ const SUN_SHARPNESS: i32 = 32;
 const OUTSIDE: [f32; 2] = [0.6, 0.9];
 
 /// How far a face that sees `sky` of the sky is inside the cabin, 1 to 0 over [`OUTSIDE`].
-fn inside(sky: f32) -> f32 {
+pub(super) fn inside(sky: f32) -> f32 {
     let t = ((sky - OUTSIDE[0]) / (OUTSIDE[1] - OUTSIDE[0])).clamp(0.0, 1.0);
     1.0 - t * t * (3.0 - 2.0 * t)
 }
@@ -317,31 +369,45 @@ const ALBEDO_LEVEL: u32 = 64;
 /// The most a face's albedo is taken as (`shader.wgsl`'s `ALBEDO_MOST`).
 const ALBEDO_MOST: f32 = 0.9;
 
-impl SunIn {
-    /// The cabin's light bounced back off its faces against the light that comes in, per channel: the
-    /// interreflection of a closed room of mean albedo `a`, `a / (1 - a)` (a tan cabin's light is warm).
-    pub fn bounce(&self) -> Vec3 {
-        self.albedo / (Vec3::ONE - self.albedo).max(Vec3::splat(0.1))
+/// The interior's faces' linear albedo, as `shader.wgsl` shades them: the texel at a face's middle (its texture's level
+/// at most [`ALBEDO_LEVEL`] wide) times its vertex colour, at most [`ALBEDO_MOST`].
+pub(super) struct Albedos<'a> {
+    textures: &'a BTreeMap<TextureRef, StageTexture>,
+    decoded: BTreeMap<TextureRef, Option<(usize, usize, Vec<u8>)>>,
+}
+
+impl<'a> Albedos<'a> {
+    pub(super) fn new(textures: &'a BTreeMap<TextureRef, StageTexture>) -> Albedos<'a> {
+        Albedos { textures, decoded: BTreeMap::new() }
     }
 
-    /// The faces' mean sky share, where they see it and their albedo ([`SunIn`]), `skies` per vertex of `interior` in
-    /// order ([`Grid::sky`]).
-    fn incoming(
-        interior: &[Mesh],
-        skies: &[(f32, Vec3)],
-        textures: &BTreeMap<TextureRef, StageTexture>,
-    ) -> (f32, Vec3, Vec3) {
-        let mut decoded: BTreeMap<TextureRef, Option<(usize, usize, Vec<u8>)>> = BTreeMap::new();
-        let mut texel = |key: &TextureRef, uv: Vec2| -> Option<Vec3> {
-            let entry =
-                decoded.entry(*key).or_insert_with(|| rgba_at_most(textures.get(key)?.image.as_ref()?, ALBEDO_LEVEL));
-            let (w, h, rgba) = entry.as_ref()?;
-            let x = ((uv.x.rem_euclid(1.0) * *w as f32) as usize).min(w - 1);
-            let y = ((uv.y.rem_euclid(1.0) * *h as f32) as usize).min(h - 1);
-            let at = (y * w + x) * 4;
-            Some(Vec3::new(rgba[at] as f32, rgba[at + 1] as f32, rgba[at + 2] as f32) / 255.0)
-        };
-        let (mut area, mut sky, mut seen, mut albedo) = (0.0, 0.0, Vec3::ZERO, Vec3::ZERO);
+    fn texel(&mut self, key: &TextureRef, uv: Vec2) -> Option<Vec3> {
+        let textures = self.textures;
+        let entry =
+            self.decoded.entry(*key).or_insert_with(|| rgba_at_most(textures.get(key)?.image.as_ref()?, ALBEDO_LEVEL));
+        let (w, h, rgba) = entry.as_ref()?;
+        let x = ((uv.x.rem_euclid(1.0) * *w as f32) as usize).min(w - 1);
+        let y = ((uv.y.rem_euclid(1.0) * *h as f32) as usize).min(h - 1);
+        let at = (y * w + x) * 4;
+        Some(Vec3::new(rgba[at] as f32, rgba[at + 1] as f32, rgba[at + 2] as f32) / 255.0)
+    }
+
+    /// The albedo of `draw`'s face of vertices `v`.
+    pub(super) fn of(&mut self, draw: &Draw, v: [&Vertex; 3]) -> Vec3 {
+        let middle = v.iter().map(|v| Vec2::from(v.uv0)).sum::<Vec2>() / 3.0;
+        let tint = v.iter().map(|v| Vec3::new(v.color[0] as f32, v.color[1] as f32, v.color[2] as f32)).sum::<Vec3>()
+            / (3.0 * 255.0);
+        let colour =
+            draw.state.textures[0].as_ref().and_then(|key| self.texel(key, middle)).unwrap_or(Vec3::ONE) * tint;
+        colour.powf(2.2).min(Vec3::splat(ALBEDO_MOST))
+    }
+}
+
+impl SunIn {
+    /// The faces' mean sky share and where they see it ([`SunIn`]), `skies` per vertex of `interior` in order
+    /// ([`Grid::sky`]).
+    fn incoming(interior: &[Mesh], skies: &[(f32, Vec3)]) -> (f32, Vec3) {
+        let (mut area, mut sky, mut seen) = (0.0, 0.0, Vec3::ZERO);
         let mut first = 0;
         for mesh in interior {
             for draw in mesh.draws.iter().filter(|draw| opaque(draw)) {
@@ -350,30 +416,20 @@ impl SunIn {
                     let v = t.map(|i| &mesh.vertices[i as usize]);
                     let [a, b, c] = v.map(|v| Vec3::from(v.position));
                     let size = 0.5 * (b - a).cross(c - a).length();
-                    let middle = v.iter().map(|v| Vec2::from(v.uv0)).sum::<Vec2>() / 3.0;
-                    let tint = v
-                        .iter()
-                        .map(|v| Vec3::new(v.color[0] as f32, v.color[1] as f32, v.color[2] as f32))
-                        .sum::<Vec3>()
-                        / (3.0 * 255.0);
-                    let colour =
-                        draw.state.textures[0].as_ref().and_then(|key| texel(key, middle)).unwrap_or(Vec3::ONE) * tint;
-                    let linear = colour.powf(2.2).min(Vec3::splat(ALBEDO_MOST));
                     let [sa, sb, sc] = t.map(|i| skies[first + i as usize]);
                     let share = (sa.0 + sb.0 + sc.0) / 3.0;
                     let size = size * inside(share);
                     area += size;
                     sky += size * share;
                     seen += size * (sa.1 + sb.1 + sc.1) / 3.0;
-                    albedo += size * linear;
                 }
             }
             first += mesh.vertices.len();
         }
         if area <= 0.0 {
-            return (0.0, Vec3::ZERO, Vec3::ZERO);
+            return (0.0, Vec3::ZERO);
         }
-        (sky / area, seen / area, albedo / area)
+        (sky / area, seen / area)
     }
 
     fn measure(
@@ -381,9 +437,9 @@ impl SunIn {
         interior: &[Mesh],
         skies: &[(f32, Vec3)],
         panes: &[(Vec3, f32)],
-        textures: &BTreeMap<TextureRef, StageTexture>,
+        fitted: cabin_bounce::Linear,
     ) -> SunIn {
-        let (sky, seen, albedo) = SunIn::incoming(interior, skies, textures);
+        let (sky, seen) = SunIn::incoming(interior, skies);
         // The faces inside the cabin by area ([`inside`]): the body seen through the glass takes in light the cabin does
         // not.
         let mut faces: Vec<(Vec3, Vec3, f32)> = Vec::new();
@@ -437,12 +493,20 @@ impl SunIn {
                 }
             })
             .collect();
-        SunIn { directions, lit, through, sky, seen, albedo }
+        SunIn { directions, lit, through, sky, seen, fitted }
     }
 
     /// The cabin's mean sun with the sun toward `to_sun` (model space): the measured directions near it, weighed.
     pub fn at(&self, to_sun: Vec3) -> f32 {
         self.weighed(&self.lit, to_sun)
+    }
+
+    /// The baked sun bounce's scale with the sun toward `to_sun` (model space): the faces' measured mean sun over the
+    /// fit's ([`SunIn::fitted`]). The fit's two bands smear the sun that gets in only through the windows over every
+    /// direction, so where the roof shades it the fit is too high; the measured mean keeps the cabin's total and the fit
+    /// says where it lands. At most [`BOUNCE_SCALE_MOST`].
+    pub fn bounce_scale(&self, to_sun: Vec3) -> f32 {
+        (self.at(to_sun) / self.fitted.at(to_sun.normalize_or_zero()).max(1e-4)).min(BOUNCE_SCALE_MOST)
     }
 
     /// The share of the sun toward `to_sun` (model space) the glass lets in.
@@ -500,7 +564,7 @@ pub fn turned(vertex: &Vertex, matrix: Mat4) -> Vertex {
     if vertex.specular[1] < INTERIOR {
         return *vertex;
     }
-    with_seen(*vertex, matrix.transform_vector3(seen(vertex)))
+    cabin_bounce::turned(with_seen(*vertex, matrix.transform_vector3(seen(vertex))), matrix)
 }
 
 /// The fraction of `specular[1]` that holds [`seen`]'s z: `SEEN_Z[0] + SEEN_Z[1] * z`, inside (0, 1) so that the whole
@@ -582,6 +646,28 @@ mod tests {
     use super::*;
     use crate::stage::{Address, Anchor, DrawState, Layer, Lod};
     use bytemuck::Zeroable;
+
+    #[test]
+    fn a_finish_packs_as_the_shader_reads_it() {
+        let finish = Finish {
+            kind: FinishKind::Flock,
+            fresnel: [0.0, 1.0, 2.5],
+            environment: None,
+            phong: [15.0, 2.0, 1.0, 0.5, 0.25],
+            noise: 10.0,
+            carbon: [1.0, 20.0, 3.0],
+            specular: 1.8,
+        };
+        let packed = finish_uniform(Some(&finish));
+        assert_eq!(packed[0], [2.0, 0.0, 1.0, 2.5]);
+        // No environment: no reflection.
+        assert_eq!(packed[1][3], -1.0);
+        assert_eq!(packed[2], [15.0, 2.0, 1.0, 0.5]);
+        assert_eq!(packed[3], [1.8, 0.0, 0.0, 10.0]);
+        let carbon = finish_uniform(Some(&Finish { kind: FinishKind::Carbon, ..finish }));
+        assert_eq!(carbon[3], [1.0, 20.0, 3.0, 10.0]);
+        assert_eq!(finish_uniform(None), [[0.0; 4]; 4]);
+    }
 
     /// One opaque draw of `triangles`, each vertex with `normal`.
     fn opaque_mesh(triangles: &[[Vec3; 3]], normal: Vec3) -> Mesh {
@@ -741,15 +827,10 @@ mod tests {
             .map(|v| grid.sky(Vec3::from(v.position), Vec3::from(v.normal)))
             .map(|(sky, seen, _)| (sky, seen))
             .collect();
-        let sun_in = SunIn::measure(&grid, &[mesh], &skies, &[], &BTreeMap::new());
-        // Seen out the open side only, and grey 128 untextured: (128 / 255)^2.2 linear.
+        let sun_in = SunIn::measure(&grid, &[mesh], &skies, &[], Default::default());
+        // Seen out the open side only.
         assert!(sun_in.sky > 0.05 && sun_in.sky < 0.6, "{}", sun_in.sky);
         assert!(sun_in.seen.x > 0.0, "{}", sun_in.seen);
-        assert!(
-            (sun_in.albedo - Vec3::splat((128.0f32 / 255.0).powf(2.2))).abs().max_element() < 1e-3,
-            "{}",
-            sun_in.albedo
-        );
         let low_side = sun_in.at(Vec3::new(1.0, 0.4, 0.0));
         assert!(low_side > 0.05, "{low_side}");
         for shut in [Vec3::Y, Vec3::new(-1.0, 0.4, 0.0), Vec3::NEG_Y] {

@@ -40,6 +40,7 @@ use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 
 pub mod cabin;
+pub mod cabin_bounce;
 mod files;
 mod meshes;
 mod parts;
@@ -50,7 +51,9 @@ use files::{folder, read_bytes, read_ini, read_text, resolve, shader_file, Textu
 use meshes::{build_meshes, crack_overlays, in_draw_order};
 pub(crate) use parts::wheel_of;
 use parts::{brake_disc_of, detach_part, ghost_part_for, hinge_side, interior_part_for, part_for};
-use shading::{dirt_texture, list_for, pass_for, scrape_texture, shade_for, FaceStyle, List, Order, Pass};
+use shading::{
+    class_finish, dirt_texture, list_for, pass_for, scrape_texture, shade_for, FaceStyle, List, Order, Pass,
+};
 pub use wheels::{wheel_at_rest, wheel_places, WheelPlaces};
 
 /// Vertex colour of every car vertex: white, as the model has none, so the texture is drawn as it is. The alpha is the
@@ -474,6 +477,7 @@ fn load_set(
                         grime: crate::dirt::grime(&mesh.node.name, shader),
                         spatter: crate::dirt::spatter(&mesh.node.name),
                         tint: shade.tint && opacity,
+                        finish: car_parts::finish(&shaders, material).or_else(|| class_finish(shader)),
                         ..shade
                     }),
                     pass: pass_for(shader, opacity),

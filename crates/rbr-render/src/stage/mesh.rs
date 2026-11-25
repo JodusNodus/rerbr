@@ -390,11 +390,15 @@ pub struct Shade {
     /// A window part (`damage::window_slot`): seen from outside it mirrors and absorbs as a pane (ours; the lamps'
     /// glass keeps its look).
     pub window: bool,
+    /// A converted car's interior material's finish (ours, [`rbr_formats::car_parts::Finish`]).
+    pub finish: Option<rbr_formats::car_parts::Finish>,
 }
 
 impl Shade {
-    fn bits(&self) -> [u32; 12] {
+    fn bits(&self) -> [u32; 28] {
         let glow = self.glow.unwrap_or_default().map(f32::to_bits);
+        let finish = crate::car::cabin::finish_uniform(self.finish.as_ref()).concat();
+        let finish: [u32; 16] = std::array::from_fn(|i| finish[i].to_bits());
         [
             self.ka.to_bits(),
             self.kd.to_bits(),
@@ -415,6 +419,22 @@ impl Shade {
             glow[1],
             glow[2],
             glow[3],
+            finish[0],
+            finish[1],
+            finish[2],
+            finish[3],
+            finish[4],
+            finish[5],
+            finish[6],
+            finish[7],
+            finish[8],
+            finish[9],
+            finish[10],
+            finish[11],
+            finish[12],
+            finish[13],
+            finish[14],
+            finish[15],
         ]
     }
 }
@@ -474,11 +494,12 @@ pub enum Image {
     Shadow { width: u32, height: u32, pixels: Vec<u8> },
     /// A block-compressed `.dds` the dials draw on ([`crate::dials`]): the renderer keeps it as their base and samples
     /// a render target made from it ([`crate::renderer::Renderer::draw_dials`]). `glow` is the gauge's emissive mask, a
-    /// `.dds` whose alpha is how much of each texel glows by night (`shader.wgsl`, `DIAL_GLOW`). `texels` is the size
+    /// `.dds` whose alpha is how much of each texel glows (`backlit` in `shader.wgsl`); `display` when its gauge has no
+    /// needle (digits, bars, lamps), so the mask is a display's light, not a dial's backlight. `texels` is the size
     /// the dials place their elements in (the base as loaded, before [`crate::upscale`]), `art` the size of the detail
     /// it holds (the car's own texture, which a larger gauge pack's base is a resize of), which the upscaler starts
     /// from.
-    Dial { base: Vec<u8>, glow: Option<Vec<u8>>, texels: (u32, u32), art: (u32, u32) },
+    Dial { base: Vec<u8>, glow: Option<Vec<u8>>, display: bool, texels: (u32, u32), art: (u32, u32) },
 }
 
 /// Byte offsets, within a geometry vertex, of what the renderer reads for one render slot

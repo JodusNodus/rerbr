@@ -5,14 +5,32 @@
 // (`cabin_window`): a face turned to a sunlit or a sunset window is lit by that sky, one that sees out only toward the
 // forest is darker. The sun reaches it only through the glass: past the car's own shadow map (the roof, pillars and
 // dash shade each other), the stage's shadows (the sun's cascades, else the reflection cube toward the sun) and the
-// clouds, and stronger than the game's, so the patches it lights stand out; they light the rest of the cabin back
-// (`car::cabin::SunIn`). The interior takes a faint sheen of what it reflects out of the windows (`cabin_sheen`). By
-// night and dusk the headlights' light off the road comes in through the glass. The dial faces keep at least the
-// game's light, so they read as before until the exposure follows the cabin. With the day's light the interior set takes
-// it instead (`cabin_day_lit`), its window and bounce light less what the cabin's own faces close off nearby.
+// clouds, and stronger than the game's, so the patches it lights stand out; the sky's and the sun's light bounce off the
+// cabin's faces onto each other, baked per vertex (`car::cabin_bounce`, `cabin_bounce`). The interior takes a faint
+// sheen of what it reflects out of the windows (`cabin_sheen`). By night and dusk the headlights' light off the road
+// comes in through the glass. The dial faces keep at least the game's light, so they read under the dash's hood. With
+// the day's light the interior set takes it instead (`cabin_day_lit`).
 
 // True with `Enhance::cabin` (a pipeline override, so that the frame without it is built as before).
 override CABIN: bool = false;
+// `car::cabin_bounce::SUN_SLOPE`.
+const CABIN_SUN_SLOPE: f32 = 2.0;
+
+// A baked cabin vertex's bounce (`car::cabin_bounce::packed`): rgb the sky's per unit of the sky's light through the
+// glass, a the sun's per unit of the sun's through the glass, toward the sun now (its direction term in the car's model
+// space for the parts drawn with the body, instance 1, turned with it as `placed` turns the rest; already turned for the
+// others, `cabin::turned`).
+fn cabin_bounce(v: VertexIn) -> vec4<f32> {
+    let q = vec3<u32>(v.bounce.y, v.bounce.y >> 10u, v.bounce.y >> 20u) & vec3<u32>(1023u);
+    let root = vec3<f32>(q) / 1023.0;
+    let c0 = pow(f32(v.sky_dir & 0xffffu) / 65535.0, 2.0);
+    let s = vec3<f32>(vec3<u32>(v.bounce.x, v.bounce.x >> 10u, v.bounce.x >> 20u) & vec3<u32>(1023u)) / 1023.0;
+    var slope = (2.0 * s - 1.0) * CABIN_SUN_SLOPE;
+    if (v.instance != 0u) {
+        slope = mat3x3<f32>(frame.car_body[0].xyz, frame.car_body[1].xyz, frame.car_body[2].xyz) * slope;
+    }
+    return vec4<f32>(root * root, max(c0 * (1.0 + dot(slope, -frame.sun.xyz)), 0.0));
+}
 // The whole part of `specular.y` of the interior set's vertices and of its dial faces (`car::cabin::INTERIOR`,
 // `GAUGE`). Its fraction holds the z of where the vertex sees the sky (`cabin_seen`).
 const CABIN_INTERIOR: f32 = 1.0;
@@ -110,11 +128,8 @@ fn cabin_headlights(n: vec3<f32>) -> vec3<f32> {
 // (`frame.cabin_seen.w`, `SunIn::through`). The
 // sky reaches a face as much as the face sees of it (`specular.z`), coloured and weighed by what lies outside that way
 // (`cabin_window`, in full), dimmed in the stage's shade about the car (`cabin_shade`); the sun past the car's, the
-// stage's and the clouds' shadows. What comes in onto all the cabin's faces (`frame.cabin`, `car::cabin::SunIn`: their
-// mean sky share and where they see it, the sun on them) comes back off them as a closed room of their mean albedo
-// gives it back (`SunIn::bounce`), onto the share of each face's view that is the cabin, the sun's more onto the faces
-// turned down (the sunlit patches lie on the floor, the seats and the dash). By night the headlights off the road
-// (`lamp_bounce`). Paint open to the sky (the bonnet seen from inside) takes the outside view's light. The sun's
+// stage's and the clouds' shadows. What its rays meet of the cabin gives it back (`cabin_bounce`). By night the
+// headlights off the road (`lamp_bounce`). Paint open to the sky (the bonnet seen from inside) takes the outside view's light. The sun's
 // highlight is capped (`CABIN_HIGHLIGHT`): in full, on the dash seen at a grazing angle, it lit the plastic white;
 // `cabin_sheen` reflects. A dial
 // face takes at least `CABIN_GAUGE_LEAST` of the open sky's light, so that it reads in the binnacle's shade.
@@ -122,14 +137,7 @@ const CABIN_GAUGE_LEAST: f32 = 0.5;
 // A clear pane's two faces' share of the sky's light, `(1 - F)^2` over the cosine-weighed hemisphere (`F` Schlick's,
 // `F0` 0.04: `car::cabin::pane_through`).
 const CABIN_SKY_THROUGH: f32 = 0.848;
-// The window light and the bounce weighed toward the window (user's call, 2026-11-01): with the measured light alone the
-// bounce, the same on every face, lit most of the cabin, which read flat (the dash top under the windscreen as bright
-// as the footwell).
-const CABIN_WINDOW_LIGHT: f32 = 2.0;
-const CABIN_BOUNCE_SHARE: f32 = 0.5;
-// The near occlusion's (`car::cabin::NEAR`, `VertexOut::sky.z`) weight, and its share on the bounce: the bounce comes
-// off the faces nearby, so they hide less of it (in full it took the Fiat 131's dash under its hood to black).
-const CABIN_NEAR: f32 = 1.0;
+// The contact shading's share on the bounce: the bounce comes off the faces nearby, so they hide less of it.
 const CABIN_NEAR_BOUNCE: f32 = 0.5;
 
 // The sun's sheen on the cabin's faces (ours, 2026-11-11): a rough plastic's highlight (`sun_lobe` at
@@ -138,18 +146,22 @@ const CABIN_NEAR_BOUNCE: f32 = 0.5;
 // grazing Fresnel lit the dash white, which had the highlight left out before.
 const CABIN_HIGHLIGHT: vec2<f32> = vec2<f32>(0.5, 0.035);
 
-fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
+fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>, gloss: f32, fibre: vec3<f32>) -> vec3<f32> {
     let ndl = cabin_sun(v, n, shadowed, under_cloud, outside);
     let sun = frame.day_sun.rgb * frame.cabin_seen.w;
     var around = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside) - sun * ndl;
     around = mix(around, vec3<f32>(dot(around, vec3<f32>(0.2126, 0.7152, 0.0722))), CABIN_NEUTRAL);
     let gamma = select(CABIN_GAMMA, 2.2, v.specular.y >= CABIN_GAUGE);
-    let albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
-    var sheen = 0.0;
+    var albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
+    var sheen = vec3<f32>(0.0);
     var inward = vec3<f32>(0.0);
     if (v.specular.y < CABIN_GAUGE) {
-        if (ndl > 0.0) {
-            sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
+        if (ndl > 0.0 && finished()) {
+            // The sun past the shadows alone: the lobes take their own angles.
+            let weight = select(CABIN_PHONG, EXTERIOR_PHONG, exterior_finish());
+            sheen = finish_sun(v, n, view, gloss, fibre, weight) * ndl / max(dot(n, -frame.sun.xyz), 1e-4);
+        } else if (ndl > 0.0) {
+            sheen = vec3<f32>(min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl);
         }
         let kept = 1.0 - cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
         inward = (sqrt(albedo * albedo + CABIN_INWARD * CABIN_INWARD) - albedo) * kept;
@@ -208,28 +220,28 @@ fn cabin_sun(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outsid
     return max(dot(n, to_sun), 0.0) * (1.0 - shadowed) * stage * (1.0 - CLOUD_CAR_SHADE * under_cloud);
 }
 
-// The cabin's irradiance (pre-albedo light) `cabin_day_lit` shades with: the window and bounce light, less what the
-// cabin's faces close off nearby, plus the sun past the glass, the headlights' bounce and the paint's outside light.
+// The cabin's irradiance (pre-albedo light) `cabin_day_lit` shades with: the window light, the bounce baked per vertex
+// (`cabin_bounce`: what this vertex's rays meet gives it back, the near faces' shade in it), the contact shading per
+// pixel on the window light and half on the bounce, plus the sun past the glass, the headlights' bounce and the paint's
+// outside light. The sun's bounce takes the sky bounce's hue (the same faces give both back).
 fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
     let sky = 1.0 - v.specular.z;
     let to_sun = -frame.sun.xyz;
     let cloud = 1.0 - CLOUD_CAR_SHADE * under_cloud;
     let shade = v.bounce_sun;
     let window = sky * cabin_window(cabin_seen(v), sky, IBL_TINT, CABIN_DAY_RANGE) * shade.x;
-    let sky_in = frame.cabin.w * cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE) * shade.y;
-    let sun_in = frame.wetness.z * shade.z * cloud * (1.0 - n.y / 3.0);
     let sky_through = frame.day_sky.rgb * CABIN_SKY_THROUGH;
     let sun_through = frame.day_sun.rgb * frame.cabin_seen.w;
-    let bounce = (1.0 - sky) * frame.cabin.rgb * (sky_through * sky_in + sun_through * sun_in);
-    // The window's and the bounce's light, never the sun's, less what the cabin's faces close off nearby: per vertex
-    // within `car::cabin::NEAR`, and per pixel the contact shading (`contact_light`, the cabin's depth laid in the
-    // prepass with the day's light).
-    var near = clamp(1.0 - CABIN_NEAR * v.sky.z, 0.0, 1.0);
+    var contact = 1.0;
     if (LIGHTING) {
-        near *= cabin_contact();
+        contact = cabin_contact();
     }
-    let bounced = CABIN_BOUNCE_SHARE * bounce * mix(1.0, near, CABIN_NEAR_BOUNCE);
-    var e = CABIN_WINDOW_LIGHT * sky_through * window * near + bounced + sun_through * ndl;
+    let luma = dot(v.bounce_sky, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let hue = select(vec3<f32>(1.0), v.bounce_sky / max(luma, 1e-6), luma > 1e-6);
+    let seen_out = cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE);
+    let sun = v.sky.x * frame.cabin.x * shade.z * cloud;
+    let baked = sky_through * seen_out * shade.y * v.bounce_sky + sun_through * sun * hue;
+    var e = sky_through * window * contact + baked * mix(1.0, contact, CABIN_NEAR_BOUNCE) + sun_through * ndl;
     let level = select(frame.dusk.w, 1.0, frame.night.x != 0.0);
     if (level > 0.0) {
         var bounce = vec3<f32>(0.0);
