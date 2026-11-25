@@ -3,6 +3,7 @@
 //! draws' shading (`SUN_MASK`): the sun's share per pixel (`fs_sun_mask`; the soft shadows' search and taps run once
 //! per pixel there, out of the stage's shader), and the contact shading per 2x2 pixels (`fs_contact`).
 
+use super::gtao::Gtao;
 use super::pipelines::{texture_entry, TEXTURE};
 use super::{depth_binding, Context};
 use crate::gpu_util;
@@ -24,6 +25,8 @@ pub(super) struct SunMask {
     targets: Targets,
     /// The sun's first cascade's depth range (`sun_ranges`), a texel standing in without the cascades.
     ranges: wgpu::TextureView,
+    /// [`Enhance::gtao`](super::Enhance::gtao): its occlusion in place of the contact shading's pass.
+    gtao: Option<Gtao>,
 }
 
 struct Passes {
@@ -63,6 +66,7 @@ impl SunMask {
         ranges: Option<&wgpu::TextureView>,
         size: (u32, u32),
         quality: Quality,
+        gtao: bool,
     ) -> SunMask {
         let device = &context.device;
         let depth_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -102,12 +106,19 @@ impl SunMask {
         });
         let size = if passes.is_some() { size } else { (1, 1) };
         let ranges = ranges.cloned().unwrap_or_else(|| no_ranges(device));
-        let targets = Targets::new(device, (&layout, &depth_layout), (depth, &ranges), size);
-        SunMask { layout, depth_layout, passes, targets, ranges }
+        let gtao =
+            (gtao && passes.is_some()).then(|| Gtao::new(device, &context.shader, [frame_layout, &depth_layout], size));
+        let targets = Targets::new(device, (&layout, &depth_layout), (depth, &ranges), size, gtao.as_ref());
+        SunMask { layout, depth_layout, passes, targets, ranges, gtao }
     }
 
     pub(super) fn on(&self) -> bool {
         self.passes.is_some()
+    }
+
+    /// Whether [`Enhance::gtao`](super::Enhance::gtao) is drawn (`frame.sun_shadow.w`).
+    pub(super) fn gtao(&self) -> bool {
+        self.gtao.is_some()
     }
 
     /// The stage draws' group 2.
@@ -117,7 +128,16 @@ impl SunMask {
 
     pub(super) fn resize(&mut self, device: &wgpu::Device, depth: &wgpu::TextureView, size: (u32, u32)) {
         if self.on() {
-            self.targets = Targets::new(device, (&self.layout, &self.depth_layout), (depth, &self.ranges), size);
+            if let Some(gtao) = &mut self.gtao {
+                gtao.resize(device, size);
+            }
+            self.targets = Targets::new(
+                device,
+                (&self.layout, &self.depth_layout),
+                (depth, &self.ranges),
+                size,
+                self.gtao.as_ref(),
+            );
         }
     }
 
@@ -129,9 +149,19 @@ impl SunMask {
 
     /// Works the mask and the contact shading out from the depth and normals the main view's prepass stored, with the
     /// world-anchored `frame`.
-    pub(super) fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame: &wgpu::BindGroup) {
+    pub(super) fn draw(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
+        frame: &wgpu::BindGroup,
+        view_projection: glam::Mat4,
+    ) {
         let Some(passes) = &self.passes else { return };
-        for (pipeline, view) in [(&passes.mask, &self.targets.mask), (&passes.contact, &self.targets.contact)] {
+        if let Some(gtao) = &self.gtao {
+            gtao.draw(encoder, queue, [frame, &self.targets.depth], view_projection);
+        }
+        let contact = self.gtao.is_none().then_some((&passes.contact, &self.targets.contact));
+        for (pipeline, view) in std::iter::once((&passes.mask, &self.targets.mask)).chain(contact) {
             let groups = [frame, &passes.empty, &self.targets.depth];
             gpu_util::full_screen_pass(
                 encoder,
@@ -152,9 +182,13 @@ impl Targets {
         (layout, depth_layout): (&wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
         (depth, ranges): (&wgpu::TextureView, &wgpu::TextureView),
         (width, height): (u32, u32),
+        gtao: Option<&Gtao>,
     ) -> Targets {
         let mask = texture(device, FORMAT, (width, height));
-        let contact = texture(device, FORMAT, (width.div_ceil(2), height.div_ceil(2)));
+        let contact = match gtao {
+            Some(gtao) => gtao.contact().clone(),
+            None => texture(device, FORMAT, (width.div_ceil(2), height.div_ceil(2))),
+        };
         let normals = texture(device, NORMALS, (width, height));
         let view = wgpu::BindingResource::TextureView;
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {

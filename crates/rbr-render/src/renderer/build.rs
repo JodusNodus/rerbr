@@ -583,6 +583,7 @@ impl Renderer {
             sun_range.as_ref().map(|range| &range.view),
             depth_size,
             quality,
+            enhance.gtao,
         );
         let draws = || meshes.iter().flat_map(|mesh| &mesh.draws);
         let wetness = stage.selection.weather.wetness();

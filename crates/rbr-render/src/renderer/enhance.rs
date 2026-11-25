@@ -18,6 +18,9 @@ pub struct Enhance {
     /// A grass field over the ground near the road, streamed about the eye, at its level ([`crate::grass`]; ours, a
     /// proof of concept: not in `all`; `grass` dense, `grass-light` light).
     pub grass: Option<crate::grass::Level>,
+    /// Ground-truth ambient occlusion from the depth in place of the contact shading's, on the sky's and bounce's light
+    /// ([`gtao`](super::gtao); ours, a proof of concept: not in `all`, needs `lighting`).
+    pub gtao: bool,
     /// Motion blur along each pixel's screen motion ([`crate::motion_blur`]; ours, experimental: not in `all`).
     /// Only with the temporal anti-aliasing.
     pub motion_blur: bool,
@@ -201,7 +204,7 @@ impl DebugView {
 }
 
 impl Enhance {
-    pub const NAMES: [&str; 13] = [
+    pub const NAMES: [&str; 14] = [
         "anisotropy",
         "blur",
         "cabin",
@@ -209,6 +212,7 @@ impl Enhance {
         "decals",
         "grass",
         "grass-light",
+        "gtao",
         "lighting",
         "marks",
         "particles",
@@ -217,7 +221,7 @@ impl Enhance {
         "windscreen",
     ];
 
-    /// A comma-separated list of [`Enhance::NAMES`], or `all` (every one but `grass` and `blur`).
+    /// A comma-separated list of [`Enhance::NAMES`], or `all` (every one but `grass`, `gtao` and `blur`).
     pub fn parse(list: &str) -> Option<Enhance> {
         let mut enhance = Enhance::default();
         for name in list.split(',') {
@@ -230,6 +234,7 @@ impl Enhance {
                         contact: true,
                         decals: true,
                         grass: enhance.grass,
+                        gtao: enhance.gtao,
                         lighting: true,
                         marks: true,
                         particles: true,
@@ -250,6 +255,7 @@ impl Enhance {
                 "decals" => enhance.decals = true,
                 "grass" => enhance.grass = Some(crate::grass::Level::Dense),
                 "grass-light" => enhance.grass = Some(crate::grass::Level::Light),
+                "gtao" => enhance.gtao = true,
                 "lighting" => enhance.lighting = true,
                 "marks" => enhance.marks = true,
                 "particles" => enhance.particles = true,

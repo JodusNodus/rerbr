@@ -130,7 +130,7 @@ pub(super) struct FrameUniform {
     /// Stage space to the sun's cascades' clip spaces ([`SunShadow`](crate::sun::SunShadow)).
     sun_matrices: [[[f32; 4]; 4]; 4],
     /// `x` how much the sun's shadow darkens (0: off), `y` one cascade texel in uv, `z` 1 under an overcast sky, `w`
-    /// unused.
+    /// 1 with [`Enhance::gtao`](super::Enhance::gtao) (`contact_at`).
     sun_shadow: [f32; 4],
     /// Each cascade's texel in metres, and the far layer's.
     sun_texels: [f32; 4],
@@ -442,7 +442,12 @@ impl Renderer {
                 ],
                 sun_matrices: [cascades.matrices[0], cascades.matrices[1], cascades.matrices[2], cascades.far]
                     .map(|m| m.to_cols_array_2d()),
-                sun_shadow: [sun_strength, sun_step, f32::from(u8::from(overcast)), 0.0],
+                sun_shadow: [
+                    sun_strength,
+                    sun_step,
+                    f32::from(u8::from(overcast)),
+                    f32::from(u8::from(self.sun_mask.gtao())),
+                ],
                 sun_texels: [cascades.texels[0], cascades.texels[1], cascades.texels[2], cascades.far_texel],
                 sun_splits: splits,
                 world_matrix: self.world.map_or(Mat4::IDENTITY, |(matrix, _)| matrix).to_cols_array_2d(),

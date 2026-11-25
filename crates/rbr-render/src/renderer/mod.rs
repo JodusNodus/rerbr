@@ -28,6 +28,7 @@ mod depth_pyramid;
 mod enhance;
 mod frame;
 mod gpu;
+mod gtao;
 mod meshes;
 mod mirrors;
 mod motion;

@@ -667,7 +667,7 @@ impl Renderer {
         }
         if masked {
             drop(pass);
-            self.sun_mask.draw(encoder, &self.frames[0].bind_group);
+            self.sun_mask.draw(encoder, &self.queue, &self.frames[0].bind_group, view_projection);
             draw_clouds(encoder, true);
             pass = Self::stage_pass(
                 encoder,
