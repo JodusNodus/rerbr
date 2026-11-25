@@ -255,9 +255,12 @@ pub struct Call {
     pub subcalls: Vec<Subcall>,
 }
 
-/// The route's calls, sorted by distance.
+/// The route's calls, sorted by distance; none where the route has no codriver file (Pikes Peak).
 pub fn calls(route: &Route) -> Result<Vec<Call>, String> {
     let file = format!("{}_codriver_1_pro_{}_data.xml", route.area, route.index);
+    if !route.dir.join(&file).is_file() {
+        return Ok(Vec::new());
+    }
     parse_calls(&read(route, &file)?)
 }
 
@@ -338,7 +341,8 @@ pub fn role(route: &Route) -> Option<Role> {
     }
 }
 
-/// A readable name from the folders (the game's stage names are not on disk): `Ghymno 1, long, forward`.
+/// A readable name from the folders (the game's stage names are not on disk, its texts are in the encrypted
+/// `game.bin`): `Greece, Ghymno 1, long forward`.
 pub fn title(route: &Route) -> String {
     if route.is_rallycross() {
         let venue = match route.area.as_str() {
@@ -356,7 +360,8 @@ pub fn title(route: &Route) -> String {
     }
     match role(route) {
         Some(role) => {
-            format!("{title}, {}, {}", role.part(), if role.is_reverse() { "reverse" } else { "forward" })
+            let direction = if role.is_reverse() { "reverse" } else { "forward" };
+            format!("{}, {title}, {} {direction}", capitalise(&route.location), role.part())
         }
         None => format!("{title}, route {}", route.index),
     }
@@ -535,10 +540,10 @@ mod tests {
         let r = route("greece", "ghymno_rally_01", 1);
         assert_eq!(
             (role(&r), title(&r), country(&r)),
-            (Some(Role::LongReverse), "Ghymno 1, long, reverse".into(), Some("GR"))
+            (Some(Role::LongReverse), "Greece, Ghymno 1, long reverse".into(), Some("GR"))
         );
         let r = route("france", "col_de_turini_rally_02", 4);
-        assert_eq!(title(&r), "Col De Turini 2, second half, forward");
+        assert_eq!(title(&r), "France, Col De Turini 2, second half forward");
         assert_eq!(country(&r), Some("FR"));
         let r = route("usa", "pikes_peak_historic", 2);
         assert_eq!((role(&r), title(&r)), (None, "Pikes Peak Historic, route 2".into()));
@@ -679,7 +684,10 @@ mod tests {
                 route.id()
             );
         }
-        assert_eq!(title(&install.route("greece/ghymno_rally_01/route_2").unwrap()), "Ghymno 1, first half, forward");
+        assert_eq!(
+            title(&install.route("greece/ghymno_rally_01/route_2").unwrap()),
+            "Greece, Ghymno 1, first half forward"
+        );
     }
 
     fn ai_gate(x: f32) -> Element {

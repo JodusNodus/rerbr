@@ -9,7 +9,12 @@ Usage:
   rbr-dirt-rally add-car CAR [--livery N] [--cars DIR] [--install INSTALL]
   rbr-dirt-rally car CAR --class CLASS --template CARFOLDER --out DIR [--livery N] [--name NAME] [--install INSTALL]
   rbr-dirt-rally import LOCATION/AREA/route_N [--install INSTALL] [--name NAME] [--out DIR] [--replace]
-         [--draw-corridor M] [--collision-corridor M] [--lod M]
+         [--draw-corridor M] [--collision-corridor M] [--lod M] [--no-preview]
+  rbr-dirt-rally preview STAGE_FOLDER... [--viewer PATH] [--maps DIR]
+
+import renders the stage's preview picture afterwards with the `viewer` beside this program (and the install's Maps folder,
+$RBR_DATA/Maps): a failure there is reported and does not fail the import. preview makes or remakes it for stages already
+converted (`preview.png` and `track.ini`'s splashscreen).
 
 INSTALL is the game folder (or its data folder); without it, the Steam libraries are searched.
 Source game files are read in place. CAR is the folder under cars/models (cme); the livery is its first without
@@ -18,7 +23,7 @@ physics of the gvrc.de car of its model, added before (cme, 131, str, m3r, mta, 
 mer, sti, mcr, ffr, pol). car writes its model alone: CLASS its generic textures under cars/generics (historic, rally,
 groupb, rallyx, trailblazer), CARFOLDER a car of the player's of the same model.
 
-Developer: xml FILE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
+Developer: xml FILE, pacenotes ROUTE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
 
 pub fn main_entry(args: impl IntoIterator<Item = String>) {
     if let Err(error) = run(args) {
@@ -51,80 +56,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         Some("import") => import(args),
+        Some("preview") => preview(args),
         Some("car") => car(args),
         Some("add-car") => add_car(args),
-        Some(other) => developer(other, args),
+        Some(other) => crate::dev::run(other, args),
     }
 }
 
-/// The commands for reading a car's or a stage's files by hand, and the unknown ones.
-fn developer(command: &str, mut args: impl Iterator<Item = String>) -> Result<(), String> {
-    match command {
-        "xml" => {
-            let path = args.next().ok_or("xml needs a binary XML file")?;
-            let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
-            fn show(e: &crate::binxml::Element, depth: usize) {
-                println!("{}{} {:?} {}", "  ".repeat(depth), e.name, e.attrs, e.text.as_deref().unwrap_or(""));
-                e.children.iter().for_each(|c| show(c, depth + 1));
-            }
-            show(&crate::binxml::parse(&bytes)?, 0);
-            Ok(())
-        }
-        "pssg-tree" => {
-            let path = args.next().ok_or("pssg-tree needs a .pssg")?;
-            let depth: usize = args.next().map_or(Ok(3), |d| d.parse().map_err(|e| format!("depth: {e}")))?;
-            fn show(n: crate::pssg::Node, depth: usize, left: usize) {
-                let attrs: Vec<String> = n
-                    .attrs()
-                    .filter(|(k, _)| !matches!(*k, "size" | "id"))
-                    .map(|(k, v)| match crate::pssg::decode_str(v) {
-                        Some(s) => format!("{k}={s}"),
-                        None if v.len() == 4 => format!("{k}={}", u32::from_be_bytes([v[0], v[1], v[2], v[3]])),
-                        None => format!("{k}=[{} bytes]", v.len()),
-                    })
-                    .collect();
-                println!("{}{} {} {}", "  ".repeat(depth), n.name(), n.id().unwrap_or(""), attrs.join(" "));
-                if left > 0 {
-                    n.children().for_each(|c| show(c, depth + 1, left - 1));
-                }
-            }
-            crate::pssg::Pssg::read(Path::new(&path))?.roots().for_each(|n| show(n, 0, depth));
-            Ok(())
-        }
-        "car-textures" => {
-            let path = args.next().ok_or("car-textures needs a livery .pssg")?;
-            for t in crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?) {
-                println!("{:<40} {}x{} {:?} {} levels", t.name, t.width, t.height, t.format, t.levels);
-            }
-            Ok(())
-        }
-        "car-texture" => {
-            let (path, name, out) = (args.next(), args.next(), args.next());
-            let (Some(path), Some(name), Some(out)) = (path, name, out) else {
-                return Err("car-texture needs a .pssg, a texture name and an output .dds".into());
-            };
-            let textures = crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?);
-            let texture = textures.iter().find(|t| t.name == name).ok_or("no such texture")?;
-            std::fs::write(out, texture.dds()).map_err(|e| e.to_string())
-        }
-        "car-info" => {
-            let path = args.next().ok_or("car-info needs a <car>_highlod.pssg")?;
-            let pssg = crate::pssg::Pssg::read(Path::new(&path))?;
-            let parts =
-                if pssg.by_id("LOD0_").is_some() { crate::car::parts(&pssg)? } else { crate::car::interior(&pssg)? };
-            print!("{}", crate::car::info(&parts, args.next().as_deref() == Some("-v")));
-            print!("{}", crate::car::materials(&pssg));
-            // An interior's needles, by its config beside it, in DiRT's frame.
-            if let Ok(config) = std::fs::read_to_string(Path::new(&path).with_extension("xml")) {
-                print!("{}", rbr_formats::car_gauges::write(&crate::needles::read(&pssg, &config)));
-            }
-            Ok(())
-        }
-        other => Err(format!("unknown command {other}; see --help")),
-    }
-}
-
-fn install(path: Option<&str>) -> Result<Install, String> {
+pub(crate) fn install(path: Option<&str>) -> Result<Install, String> {
     match path {
         Some(path) => Install::at(Path::new(path)),
         None => {
@@ -190,12 +129,17 @@ fn import(args: impl Iterator<Item = String>) -> Result<(), String> {
     let mut args = args.peekable();
     let id = args.next().filter(|a| !a.starts_with("--")).ok_or("import needs LOCATION/AREA/route_N")?;
     let log = |m: &str| eprintln!("rbr-dirt-rally: {m}");
-    let control = rbr_ac_tracks::btb::control::Control::new(log, Default::default());
+    let control = rbr_btb_writer::control::Control::new(log, Default::default());
     let mut options = crate::import::Options::new(control);
     let mut path = None;
+    let mut previews = true;
     while let Some(flag) = args.next() {
         if flag == "--replace" {
             options.replace = true;
+            continue;
+        }
+        if flag == "--no-preview" {
+            previews = false;
             continue;
         }
         let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
@@ -213,5 +157,59 @@ fn import(args: impl Iterator<Item = String>) -> Result<(), String> {
     let report = crate::import::import(&install(path.as_deref())?, &id, &options)?;
     println!("{}", report.folder.display());
     println!("{report:?}");
+    if previews {
+        if let Err(e) = preview_stage(&report.folder, None, None) {
+            eprintln!("rbr-dirt-rally: no preview picture ({e}); the launcher shows the driveline");
+        }
+    }
     Ok(())
+}
+
+/// Renders `folder`'s preview with the `viewer` (default: the one beside this program) and the maps (default:
+/// `$RBR_DATA/Maps`).
+fn preview_stage(folder: &Path, viewer: Option<&Path>, maps: Option<&Path>) -> Result<(), String> {
+    let viewer = match viewer {
+        Some(v) => v.to_owned(),
+        None => std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .with_file_name(format!("viewer{}", std::env::consts::EXE_SUFFIX)),
+    };
+    if !viewer.is_file() {
+        return Err(format!("no viewer at {}", viewer.display()));
+    }
+    let maps = match maps {
+        Some(m) => m.to_owned(),
+        None => std::env::var_os("RBR_DATA").map(|d| Path::new(&d).join("Maps")).ok_or("RBR_DATA is not set")?,
+    };
+    let scratch = std::env::temp_dir().join(format!("rbr-dirt-rally-preview-{}", std::process::id()));
+    let png = crate::preview::render(folder, &viewer, &maps, &scratch)?;
+    println!("{}", png.display());
+    Ok(())
+}
+
+fn preview(args: impl Iterator<Item = String>) -> Result<(), String> {
+    let (mut folders, mut viewer, mut maps) = (Vec::new(), None, None);
+    let mut args = args;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--viewer" => viewer = Some(PathBuf::from(args.next().ok_or("--viewer needs a path")?)),
+            "--maps" => maps = Some(PathBuf::from(args.next().ok_or("--maps needs a folder")?)),
+            _ => folders.push(PathBuf::from(arg)),
+        }
+    }
+    if folders.is_empty() {
+        return Err("preview needs a stage folder".into());
+    }
+    let mut failed = 0;
+    for folder in &folders {
+        if let Err(e) = preview_stage(folder, viewer.as_deref(), maps.as_deref()) {
+            eprintln!("rbr-dirt-rally: {}: {e}", folder.display());
+            failed += 1;
+        }
+    }
+    if failed > 0 {
+        Err(format!("{failed} of {} previews failed", folders.len()))
+    } else {
+        Ok(())
+    }
 }

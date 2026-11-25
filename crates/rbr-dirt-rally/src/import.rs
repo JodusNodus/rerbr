@@ -5,7 +5,7 @@ use crate::install::{Install, Route};
 use crate::{
     collision, frame, material, mesh, objects, pssg::Pssg, route, shade, solid, stage, surface, texture, trees, vista,
 };
-use rbr_ac_tracks::btb::{
+use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
     road::Line,
@@ -52,7 +52,7 @@ pub fn default_name(route: &Route) -> String {
 /// Converts the route `id` (`location/area/route_<n>`) of `install`.
 pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, String> {
     let route = install.route(id)?;
-    if !route.is_rally() && !route.is_rallycross() && route.area != "pikes_peak" {
+    if !route.is_rally() && !route.is_rallycross() && !route.area.starts_with("pikes_peak") {
         return Err(format!("{id}: only rally stages, rallycross and Pikes Peak convert (not the frontend)"));
     }
     let control = &options.control;
@@ -98,6 +98,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         start,
         finish,
         splits,
+        calls: if circuit { Vec::new() } else { route::calls(&route)? },
         circuit,
         materials,
         drawn,
@@ -139,7 +140,7 @@ const GATE_OFF_ROAD: f64 = 8.;
 
 /// The road's centre line in the stage's world (the AI track's, shared by a route's halves), with the arc lengths of
 /// its start, finish and splits: each gate's crossing projected onto it. A line running the other way is reversed.
-fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64, Vec<f64>), String> {
+pub(crate) fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64, Vec<f64>), String> {
     let road = route::road(route)?;
     let mut points: Vec<[f64; 3]> = road.iter().map(|s| frame::world(s.centre())).collect();
     let mut width: Vec<f64> = road.iter().map(|s| f64::from(s.width)).collect();
@@ -148,7 +149,7 @@ fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64,
     };
     let at = |line: &Line, distance: f64| -> Result<f64, String> {
         let g = gate(distance).ok_or("course without gates")?;
-        let (s, off) = rbr_ac_tracks::assetto::ai::project(line, frame::world(g.crossing));
+        let (s, off) = rbr_btb_writer::road::project(line, frame::world(g.crossing));
         if off > GATE_OFF_ROAD {
             return Err(format!("the gate at {distance:.0} m lies {off:.1} m off the AI road"));
         }
@@ -183,7 +184,7 @@ fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), Str
         return Err(format!("the AI loop is {:.0} m, the lap {:.0} m", ring.length(), lap.length));
     }
     let on = |p: [f32; 3]| -> Result<f64, String> {
-        let (s, off) = rbr_ac_tracks::assetto::ai::project(&ring, frame::world(p));
+        let (s, off) = rbr_btb_writer::road::project(&ring, frame::world(p));
         if off > GATE_OFF_ROAD {
             return Err(format!("a lap marker lies {off:.1} m off the AI road"));
         }
@@ -388,7 +389,7 @@ fn faded(texture: &texture::Texture, level: u8) -> Vec<u8> {
     let mut rgba = texture.rgba();
     let scale = f32::from(level) / f32::from(FADES);
     rgba.chunks_exact_mut(4).for_each(|p| p[3] = (f32::from(p[3]) * scale).round() as u8);
-    rbr_ac_tracks::btb::textures::encode(true, texture.width, texture.height, rgba)
+    rbr_btb_writer::textures::encode(true, texture.width, texture.height, rgba)
 }
 
 /// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.
@@ -405,6 +406,10 @@ const DIST_REACH: f64 = 3000.;
 /// A tree's far level, its billboard (4 triangles from the game's own 2-triangle far level), is drawn from the model's
 /// range to [`DIST_REACH`] for the trees within this far of the road, metres.
 const BILLBOARD_REACH: f64 = 1000.;
+/// A tree with a billboard draws its model no farther than this, metres, then the billboard (the renderer's band takes it
+/// half as far again, to 750 m). Nearer, the billboards read darker and denser than the models' thin needles in the haze
+/// (Turini 1 km, 340 m and 510 m swaps); at 750 m the frame matches (RMSE 1.1 against the full range, noise level).
+const TREE_REACH: f64 = 500.;
 /// The most triangles a stage writes (terrain, single props, far levels and each instanced model once) on the sample
 /// routes: the viewer holds every one in memory (the instances only their transforms).
 #[cfg(test)]
@@ -552,14 +557,17 @@ impl Placer<'_> {
         } else {
             f64::from(size * PROP_REACH).min(PROP_COST / (triangles.max(1) as f64).sqrt())
         };
-        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
-        let (along, distance) = rbr_ac_tracks::assetto::ai::project(self.line, here);
+        let (along, distance) = rbr_btb_writer::road::project(self.line, here);
         if meshes.is_empty() {
             return Ok(());
         }
         let (road, forward) = self.line.sample(along);
         let sprite = source.types.sprites[at].as_ref();
+        // A tree with its billboard swaps to it at [`TREE_REACH`] at most.
+        let billboarded = sprite.is_some() && !tile && distance <= BILLBOARD_REACH;
+        let reach = if billboarded { reach.min(TREE_REACH) } else { reach };
+        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         // A tree's far level is a baked quad pair facing the road (4 triangles each: the model's own turn is the
         // placement's, the billboard's the road's), drawn from the model's range on; the tiles stay models, drawn from
         // 0, with their billboard past 8 m from the road.

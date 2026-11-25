@@ -14,6 +14,7 @@ use wgpu::util::DeviceExt;
 use super::sim::Billboard;
 use super::wave::WaveVertex;
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util;
 use crate::uploads::Uploads;
 
 /// Every sprite is resampled to this square, the size most of them have.
@@ -387,12 +388,7 @@ impl Pass {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("particle frame"),
-            size: std::mem::size_of::<FrameUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform = gpu_util::uniform_buffer(device, "particle frame", size_of::<FrameUniform>());
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("particles"),
             entries: &[
@@ -424,19 +420,13 @@ impl Pass {
                 },
             ],
         });
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("particles"),
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
-            ],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("particles"),
-            source: wgpu::ShaderSource::Wgsl(source().into()),
-        });
+        let resources = [
+            uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&view),
+            wgpu::BindingResource::Sampler(&sampler),
+        ];
+        let group = gpu_util::bind_group(device, "particles", &layout, &resources);
+        let shader = gpu_util::shader(device, "particles", &source());
         let premultiplied = wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::One,
             dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -689,3 +679,11 @@ mod tests {
         assert!(small.chunks_exact(4).all(|p| p == [200, 100, 50, 128]));
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_particles_frame_keeps_the_shaders_layout,
+    source(),
+    "Frame",
+    FrameUniform { view_projection, eye, fog_color, fog_range, light }
+);

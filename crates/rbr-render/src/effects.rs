@@ -5,6 +5,7 @@
 //! draw in a pass that reads the depth instead of writing it.
 
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util::{self, UNIFORM};
 use crate::particles::cabin::CabinMask;
 use crate::particles::Precipitation;
 use crate::renderer::{depth_binding, LampUniform, DEPTH_FORMAT, MAX_LAMPS, MAX_STREET};
@@ -110,14 +111,7 @@ impl Effects {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("effects"),
             entries: &[
-                entry(
-                    0,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
+                entry(0, UNIFORM),
                 entry(1, depth_binding()),
                 entry(
                     2,
@@ -130,14 +124,7 @@ impl Effects {
                 entry(3, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison)),
             ],
         });
-        let buffer = |label| {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size: std::mem::size_of::<Uniform>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        };
+        let buffer = |label| gpu_util::uniform_buffer(device, label, size_of::<Uniform>());
         let (uniform, mirror_uniform) = (buffer("effects"), buffer("mirror effects"));
         let reduced_uniform = buffer("reduced effects");
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -148,17 +135,9 @@ impl Effects {
             ..Default::default()
         });
         let group = bind_group(device, &layout, &uniform, &sampler, depth, sun_map);
-        let empty_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("empty"), entries: &[] });
-        let empty = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("empty"),
-            layout: &empty_layout,
-            entries: &[],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("rain"),
-            source: wgpu::ShaderSource::Wgsl(rain_source().into()),
-        });
+        let empty_layout = gpu_util::layout(device, "empty", &[]);
+        let empty = gpu_util::bind_group(device, "empty", &empty_layout, &[]);
+        let shader = gpu_util::shader(device, "rain", &rain_source());
         let premultiplied = wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::One,
             dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -467,14 +446,18 @@ fn bind_group(
     depth: &wgpu::TextureView,
     sun_map: &wgpu::TextureView,
 ) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("effects"),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(sun_map) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(sampler) },
-        ],
-    })
+    use wgpu::BindingResource::{Sampler, TextureView};
+    let resources = [uniform.as_entire_binding(), TextureView(depth), TextureView(sun_map), Sampler(sampler)];
+    gpu_util::bind_group(device, "effects", layout, &resources)
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_effects_keeps_the_shaders_layout, rain_source(), "Effects",
+    Uniform {
+        view_projection, inverse_view_projection, eye, motion, sun, sun_colour, ambient, sky, fog, screen,
+        sun_matrices, sun_splits, lamps, lamp_matrix, day_sun, day_sky, cabin_from_stage, cabin_box,
+        street_light, street, mirror
+    }
+);

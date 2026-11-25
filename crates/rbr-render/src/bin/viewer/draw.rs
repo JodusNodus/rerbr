@@ -32,17 +32,28 @@ pub fn draw_particles(scene: &mut Scene, renderer: &mut Renderer, view_projectio
     }
 }
 
-/// Draws the glass, crew and car, returning the car's camera for the window's projection. Live play (`lead`) turns
-/// the wheel to the newest physics step, which can be newer than the displayed frame; a replay turns it with the
-/// frame shown, as it draws the car there (its process runs ahead of what is shown, a video's to the drive's end).
-pub fn draw_car(
-    scene: &mut Scene,
-    renderer: &mut Renderer,
+/// The camera the frame shows the car from, worked out before anything is drawn (the particles go first: the glass
+/// takes their spray): the school demo's for its car's pose (`demo`, with whether it is a ride), else the drive's
+/// `shown` view under the scripted cameras; none without a drive.
+pub fn car_lens(
+    scene: &Scene,
     shown: Shown,
+    demo: Option<(&rbr_recording::pose::CarPose, bool)>,
     look: ChaseLook,
     fov: f32,
-    lead: bool,
 ) -> Option<Lens> {
+    let (Some(playback), Some(mounts)) = (&scene.playback, &scene.mounts) else { return None };
+    Some(match demo {
+        Some((car, true)) => playback.lens_at(mounts, rbr_render::school_demo::ride_view(mounts), car, fov),
+        Some((car, false)) => playback.camera_at(car, look).lens(playback.chase_fov),
+        None => shown.lens(playback, mounts, scripted_camera(scene.characters.as_ref()).2, look, fov),
+    })
+}
+
+/// Draws the glass, crew and car ([`car_lens`] is its camera). Live play (`lead`) turns
+/// the wheel to the newest physics step, which can be newer than the displayed frame; a replay turns it with the
+/// frame shown, as it draws the car there (its process runs ahead of what is shown, a video's to the drive's end).
+pub fn draw_car(scene: &mut Scene, renderer: &mut Renderer, shown: Shown, lead: bool) {
     let view = shown.car_view();
     if let (Some(playback), Some(glass)) = (&mut scene.playback, &mut scene.glass) {
         glass.draw(renderer, playback, view.interior(), scene.particles.as_ref().map(|p| &p.particles.spray));
@@ -52,15 +63,13 @@ pub fn draw_car(
             scene.live.as_ref().filter(|_| lead).and_then(|live| live.newest_step()).map(|step| step.steering());
         show_crew(crew, playback, view, steer, renderer);
     }
-    let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };
-    let lens = shown.lens(playback, mounts, scripted_camera(scene.characters.as_ref()).2, look, fov);
+    let Some(playback) = &mut scene.playback else { return };
     if let Some(needles) = &scene.needles {
         needles.turn(playback, &dial_values(playback, scene.live.as_ref()));
     }
     playback.interior = view.interior();
     renderer.set_outside_view(!view.interior());
     playback.apply(renderer);
-    Some(lens)
 }
 
 /// The camera the scripted events force, and the lens for [`Shown::lens`]: the helicam over the flip camera. The
@@ -200,7 +209,7 @@ pub fn dial_values(playback: &Playback, live: Option<&Live>) -> dials::Values {
 }
 
 /// Draws the school demo car (viewer-only): the player's own car meshes at the replay's `car` pose, the crew
-/// hidden, returning the demo camera. `ride` watches from the cockpit, or the bonnet when the car has no cockpit
+/// hidden, returning whether it drew ([`car_lens`] is its camera). `ride` watches from the cockpit, or the bonnet when the car has no cockpit
 /// mount; a demonstration is watched from the chase camera.
 ///
 /// The glass and the dials are not updated for the demo: the wipers ride rigidly with the car and the dials keep
@@ -208,17 +217,10 @@ pub fn dial_values(playback: &Playback, live: Option<&Live>) -> dials::Values {
 ///
 /// The game's start orbit replaces the view until the go ([`scripted_camera`]); the caller passes the demo lens
 /// instead while the demo plays.
-pub fn draw_demo(
-    scene: &mut Scene,
-    renderer: &mut Renderer,
-    ride: bool,
-    car: &rbr_recording::pose::CarPose,
-    look: ChaseLook,
-    fov: f32,
-) -> Option<Lens> {
-    let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };
+pub fn draw_demo(scene: &mut Scene, renderer: &mut Renderer, ride: bool, car: &rbr_recording::pose::CarPose) -> bool {
+    let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return false };
     let body = playback.model_to_stage(car);
-    let lens = if ride {
+    if ride {
         let view = rbr_render::school_demo::ride_view(mounts);
         playback.interior = view.interior();
         renderer.set_outside_view(!view.interior());
@@ -226,7 +228,6 @@ pub fn draw_demo(
         if let Some(crew) = &mut scene.crew {
             crew.apply(renderer, body, Default::default());
         }
-        playback.lens_at(mounts, view, car, fov)
     } else {
         playback.interior = false;
         renderer.set_outside_view(true);
@@ -234,9 +235,8 @@ pub fn draw_demo(
         if let Some(crew) = &mut scene.crew {
             crew.apply(renderer, body, Default::default());
         }
-        playback.camera_at(car, look).lens(playback.chase_fov)
-    };
-    Some(lens)
+    }
+    true
 }
 
 /// The demo's hint over the HUD: what plays and that Enter skips it.

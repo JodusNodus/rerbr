@@ -3,7 +3,7 @@
 use super::feed::Feed;
 use super::input::{movement, select_gear};
 use crate::draw::{
-    demo_hint, dial_values, draw_car, draw_demo, draw_particles, readout, scripted_camera, step_characters,
+    car_lens, demo_hint, dial_values, draw_car, draw_demo, draw_particles, readout, scripted_camera, step_characters,
 };
 use crate::scene::take_damage;
 use crate::shown::{self, Feedback};
@@ -167,6 +167,8 @@ impl App {
         // One screen's size: the window's, or a third of it holding the three views.
         let screen = triple::screen((width, height), running.spanned());
         let mut live_failed = false;
+        // The live drive's sound stepped since the last frame, played once the frame's camera is known.
+        let mut heard = None;
         if self.menu.is_some() {
             // Paused: the stepping process's clock is stopped, so its game, clocks and car stand still.
         } else if let (Some(process), Some(playback)) = (&mut self.scene.live, &mut self.scene.playback) {
@@ -250,11 +252,48 @@ impl App {
                     characters.call_rescue();
                 }
             }
-            let sounds = process.take_sounds();
             // The rally school's speech, from the live record's school state.
             let (school_stop, school_ids) = process.take_school_speech();
-            let school = process.hud_view().school;
-            if let Some(sound) = &mut self.sound {
+            heard = Some((process.take_sounds(), school_stop, school_ids, process.hud_view().school));
+        } else if let Some(playback) = &mut self.scene.playback {
+            playback.advance(dt as f64);
+        }
+        span.next("scene update");
+        if live_failed {
+            self.scene.live = None;
+            // Dropping the wheel stops its force.
+            self.wheel = None;
+        }
+        if self.menu.is_none() {
+            self.clock += f64::from(dt);
+        }
+        let mut scripted_events = None;
+        if let Some(characters) = &mut self.scene.characters {
+            let race = self.scene.live.as_ref().and_then(|l| l.hud.race);
+            let events = step_characters(characters, self.scene.playback.as_ref(), self.clock, race);
+            scripted_events = Some(rbr_render::sound::events(&events, characters.rescue_position()));
+        }
+        // The game's start orbit replaces the player's view until the go, and the helicam while the helicopter runs.
+        let camera_record = self.scene.live.as_ref().and_then(|live| live.hud.camera);
+        let (heli, flip, _) = scripted_camera(self.scene.characters.as_ref());
+        let before = self.shown;
+        self.shown = Shown::of(self.view, camera_record, heli, flip);
+        // The Camera page shows the view it sets, also over the start orbit and the helicam.
+        if self.menu.as_ref().is_some_and(|menu| menu.camera().is_some()) {
+            self.shown = Shown::Player(self.view);
+        }
+        // A cut to another camera: the temporal anti-aliasing's history is of the last one's view.
+        if !before.same_camera(self.shown) {
+            running.renderer.reset_history();
+        }
+        let looking_back = self.bindings.get(Action::LookBack).key.is_some_and(|k| self.held.contains(&k))
+            || self.pads[Action::LookBack as usize] > bindings::PRESS;
+        if let Some(playback) = &mut self.scene.playback {
+            playback.follow_cameras(self.shown.swing(), looking_back);
+        }
+        // The sound hears from this frame's camera, as the video's: set before the last frame's, it lagged a cut.
+        if let Some(sound) = &mut self.sound {
+            if let (Some((sounds, school_stop, school_ids, school)), Some(playback)) = (heard, &self.scene.playback) {
                 if let Some(mounts) = &self.scene.mounts {
                     let lens = self.shown.lens(playback, mounts, None, self.look, self.fov);
                     let interior = self.shown.car_view().interior();
@@ -276,49 +315,14 @@ impl App {
                 let frame = self.school_frame;
                 self.school_speech.feed(sound, school.as_ref(), school_stop, &school_ids, frame);
             }
-        } else if let Some(playback) = &mut self.scene.playback {
-            playback.advance(dt as f64);
-        }
-        span.next("scene update");
-        if live_failed {
-            self.scene.live = None;
-            // Dropping the wheel stops its force.
-            self.wheel = None;
-        }
-        if self.menu.is_none() {
-            self.clock += f64::from(dt);
-        }
-        if let Some(characters) = &mut self.scene.characters {
-            let race = self.scene.live.as_ref().and_then(|l| l.hud.race);
-            let events = step_characters(characters, self.scene.playback.as_ref(), self.clock, race);
-            if let Some(sound) = &mut self.sound {
-                sound.events(&rbr_render::sound::events(&events, characters.rescue_position()));
+            if let Some(events) = &scripted_events {
+                sound.events(events);
             }
         }
-        // The game's start orbit replaces the player's view until the go, and the helicam while the helicopter runs.
-        let camera_record = self.scene.live.as_ref().and_then(|live| live.hud.camera);
-        let (heli, flip, _) = scripted_camera(self.scene.characters.as_ref());
-        let before = self.shown;
-        self.shown = Shown::of(self.view, camera_record, heli, flip);
-        // The Camera page shows the view it sets, also over the start orbit and the helicam.
-        if self.menu.as_ref().is_some_and(|menu| menu.camera().is_some()) {
-            self.shown = Shown::Player(self.view);
-        }
-        // A cut to another camera: the temporal anti-aliasing's history is of the last one's view.
-        if !before.same_camera(self.shown) {
-            running.renderer.reset_history();
-        }
-        let looking_back = self.bindings.get(Action::LookBack).key.is_some_and(|k| self.held.contains(&k))
-            || self.pads[Action::LookBack as usize] > bindings::PRESS;
-        if let Some(playback) = &mut self.scene.playback {
-            playback.follow_cameras(self.shown.swing(), looking_back);
-        }
         let fov = self.fov;
-        let car_lens = match &demo {
-            // The school demo: the player's car at the replay's pose, the player's camera replaced.
-            Some((car, ride)) => draw_demo(&mut self.scene, &mut running.renderer, *ride, car, self.look, fov),
-            None => draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov, !self.replay),
-        };
+        // The school demo: the player's car at the replay's pose, the player's camera replaced.
+        let demo_pose = demo.as_ref().map(|(car, ride)| (car, *ride));
+        let car_lens = car_lens(&self.scene, self.shown, demo_pose, self.look, fov);
         let lens = match (&mut self.scene.orbit, car_lens) {
             (Some(orbit), _) => {
                 orbit.zoom((movement.forward * -ZOOM_RATE * dt).exp());
@@ -339,11 +343,16 @@ impl App {
         if let Some(characters) = &mut self.scene.characters {
             characters.apply(&mut running.renderer, &view_projections);
         }
+        // The particles before the car: the glass takes their spray (after it, the last frame's).
+        draw_particles(&mut self.scene, &mut running.renderer, view_projection);
+        match &demo {
+            Some((car, ride)) => _ = draw_demo(&mut self.scene, &mut running.renderer, *ride, car),
+            None => draw_car(&mut self.scene, &mut running.renderer, self.shown, !self.replay),
+        }
         if let (Some(ghost), Some(playback)) = (&mut self.scene.ghost, &self.scene.playback) {
             let hud = rbr_render::ghost::hud_time(self.scene.live.as_ref());
             ghost.apply(&mut running.renderer, playback, hud, view_projection);
         }
-        draw_particles(&mut self.scene, &mut running.renderer, view_projection);
         if let (Some(drawn), Some(playback)) = (&mut self.scene.fences, &self.scene.playback) {
             drawn.draw(&mut running.renderer, playback, &view_projections);
         }

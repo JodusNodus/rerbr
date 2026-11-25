@@ -514,7 +514,7 @@ struct Form {
     /// Our cloud cover and our rain or snow over the stage (`viewer --clouds`, `--precipitation`); none takes them
     /// from the weather.
     clouds: Option<settings::Clouds>,
-    precipitation: Option<settings::Precipitation>,
+    precipitation: Option<settings::Rain>,
     /// Whether the Drive page shows the Custom weather's own controls.
     weather_adjust: bool,
     wear: u32,

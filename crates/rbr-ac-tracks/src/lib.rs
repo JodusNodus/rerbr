@@ -3,7 +3,6 @@
 //! a track's layouts and convert one (`import`). Source game files are read in place and never copied into the
 //! repository; `notes/assetto.md` has the verified findings.
 pub mod assetto;
-pub mod btb;
 pub mod cli;
 #[cfg(feature = "fixture")]
 pub mod fixture;

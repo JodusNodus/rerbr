@@ -1,6 +1,7 @@
 //! The Drive page's weather choices and the road wetness words.
 
 use rbr_gameplay::weather::{self, Preset};
+use rbr_render::atmosphere::{Clouds, Fog, Rain};
 
 use crate::pages::Choice;
 
@@ -30,49 +31,15 @@ impl WeatherChoice {
     }
 }
 
-/// Our fog over the stage (`viewer --fog`), not the game's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fog {
-    Off,
-    Light,
-    Heavy,
-}
-
-impl Fog {
-    /// The fogs offered, in the dropdown's order.
-    pub const ALL: [Fog; 3] = [Fog::Off, Fog::Light, Fog::Heavy];
-}
-
-/// Our cloud cover over the stage (`viewer --clouds`), not the game's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Clouds {
-    Clear,
-    Dimpled,
-    Partly,
-    Broken,
-    Heavy,
-}
-
-impl Clouds {
-    pub const ALL: [Clouds; 5] = [Clouds::Clear, Clouds::Dimpled, Clouds::Partly, Clouds::Broken, Clouds::Heavy];
-}
-
-/// Our rain or snow over the stage (`viewer --precipitation`), not the game's; the road's wetness stays separate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Precipitation {
-    None,
-    Light,
-    Moderate,
-    Heavy,
-}
-
-impl Precipitation {
-    pub const ALL: [Precipitation; 4] =
-        [Precipitation::None, Precipitation::Light, Precipitation::Moderate, Precipitation::Heavy];
-}
+/// The fogs offered, in the dropdown's order.
+pub const FOGS: [Fog; 3] = [Fog::Off, Fog::Light, Fog::Heavy];
+/// The cloud covers offered.
+pub const CLOUDS: [Clouds; 5] = [Clouds::Clear, Clouds::Dimpled, Clouds::Partly, Clouds::Broken, Clouds::Heavy];
+/// What falls, offered.
+pub const RAINS: [Rain; 4] = [Rain::None, Rain::Light, Rain::Moderate, Rain::Heavy];
 
 impl Choice for Fog {
-    const ALL: &[Self] = &Fog::ALL;
+    const ALL: &[Self] = &FOGS;
     fn name(self) -> &'static str {
         match self {
             Fog::Off => "off",
@@ -90,7 +57,7 @@ impl Choice for Fog {
 }
 
 impl Choice for Clouds {
-    const ALL: &[Self] = &Clouds::ALL;
+    const ALL: &[Self] = &CLOUDS;
     fn name(self) -> &'static str {
         ["clear", "dimpled", "partly", "broken", "heavy"][self as usize]
     }
@@ -99,12 +66,12 @@ impl Choice for Clouds {
     }
     /// `light`, the word the broken cover had, still reads as it.
     fn parse(text: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|c| c.name() == if text == "light" { "broken" } else { text })
+        Clouds::parse(text)
     }
 }
 
-impl Choice for Precipitation {
-    const ALL: &[Self] = &Precipitation::ALL;
+impl Choice for Rain {
+    const ALL: &[Self] = &RAINS;
     fn name(self) -> &'static str {
         ["none", "light", "moderate", "heavy"][self as usize]
     }

@@ -46,7 +46,8 @@ same paths.
 | --- | --- |
 | `crates/rbr-formats` | Game file parsers, one module per format |
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
-| `crates/rbr-ac-tracks` | Assetto Corsa tracks as BTB stages (experimental): KN5 and AI readers, the shared BTB writer, the import the launcher's Add calls |
+| `crates/rbr-ac-tracks` | Assetto Corsa tracks as BTB stages (experimental): KN5 and AI readers, the import the launcher's Add calls |
+| `crates/rbr-btb-writer` | The BTB stage writing the converters share (experimental): textures, meshes, road, pacenotes, collision checks, stage preparation |
 | `crates/rbr-dirt-rally` | DiRT Rally stages as BTB stages (experimental): readers of the player's install (PSSG, binary XML, JPAK collision), kept in this crate, and the import on the shared BTB writer |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |

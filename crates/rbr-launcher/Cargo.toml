@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 rbr-ac-tracks = { path = "../rbr-ac-tracks" }
 rbr-btb = { path = "../rbr-btb" }
+rbr-btb-writer = { path = "../rbr-btb-writer" }
 rbr-dirt-rally = { path = "../rbr-dirt-rally" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-season = { path = "../rbr-season" }

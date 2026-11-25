@@ -7,6 +7,7 @@
 //! whole frame (0.45 ms at 4K).
 
 use crate::effects::Effects;
+use crate::gpu_util;
 use crate::particles::gpu::Pass;
 use crate::post::SCENE_FORMAT;
 use crate::renderer::{depth_binding, DEPTH_FORMAT};
@@ -111,59 +112,22 @@ impl ParticleTarget {
     ) -> Option<ParticleTarget> {
         let half = reduced(size)?;
         let texture = |label, format, usage| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d { width: half.0, height: half.1, depth_or_array_layers: 1 },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                    usage: usage | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-                .create_view(&Default::default())
+            gpu_util::target(device, label, half, format, usage | wgpu::TextureUsages::TEXTURE_BINDING)
         };
         let attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
         let colour = texture("particles' target", SCENE_FORMAT, attachment);
         let reduced_depth = texture("particles' depth", DEPTH_FORMAT, attachment);
-        let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty,
-            count: None,
-        };
         let float = wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: false },
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         };
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("particles' target"),
-            entries: &[entry(0, depth_binding()), entry(1, depth_binding()), entry(2, float)],
-        });
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("particles' target"),
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(depth) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&reduced_depth) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&colour) },
-            ],
-        });
-        let full_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("particles' depth"),
-            entries: &[entry(0, depth_binding())],
-        });
-        let full = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("particles' depth"),
-            layout: &full_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(depth) }],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("particles' target"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let layout = gpu_util::layout(device, "particles' target", &[depth_binding(), depth_binding(), float]);
+        let views = [depth, &reduced_depth, &colour].map(wgpu::BindingResource::TextureView);
+        let group = gpu_util::bind_group(device, "particles' target", &layout, &views);
+        let full_layout = gpu_util::layout(device, "particles' depth", &[depth_binding()]);
+        let full = gpu_util::bind_group(device, "particles' depth", &full_layout, &[views[0].clone()]);
+        let shader = gpu_util::shader(device, "particles' target", SHADER);
         let pipeline = |label, layout, fragment, target: Option<Option<wgpu::ColorTargetState>>, depth| {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(label),

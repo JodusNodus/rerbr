@@ -3,6 +3,7 @@
 use super::pipelines::cutout;
 use super::uniforms::ModeUniform;
 use super::DEPTH_FORMAT;
+use crate::gpu_util;
 use crate::stage::{Address, DrawState, Highlight, Layers, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS};
 use bytemuck::bytes_of;
 use rbr_formats::dds::{self, Format};
@@ -315,35 +316,28 @@ pub(super) fn bind_group(
         contents: bytes_of(&mode),
         usage: wgpu::BufferUsages::UNIFORM,
     });
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("draw textures"),
+    let view = wgpu::BindingResource::TextureView;
+    gpu_util::bind_group(
+        device,
+        "draw textures",
         layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(views.get(key.textures[0])),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(views.get(key.textures[1])),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(samplers.get(key.address[0], key.address[1])),
-            },
-            wgpu::BindGroupEntry { binding: 3, resource: mode_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(views.get(key.shadow)) },
-            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(views.get(key.specular)) },
-            wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow) },
-            wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(views.get(key.normal)) },
-            wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(layer_views[1]) },
-            wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(layer_views[2]) },
-            wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(layer_views[3]) },
-            wgpu::BindGroupEntry { binding: 11, resource: wgpu::BindingResource::TextureView(layer_views[4]) },
-            wgpu::BindGroupEntry { binding: 12, resource: wgpu::BindingResource::TextureView(layer_views[5]) },
-            wgpu::BindGroupEntry { binding: 13, resource: wgpu::BindingResource::TextureView(layer_views[0]) },
+        &[
+            view(views.get(key.textures[0])),
+            view(views.get(key.textures[1])),
+            wgpu::BindingResource::Sampler(samplers.get(key.address[0], key.address[1])),
+            mode_buffer.as_entire_binding(),
+            view(views.get(key.shadow)),
+            view(views.get(key.specular)),
+            view(glow),
+            view(views.get(key.normal)),
+            view(layer_views[1]),
+            view(layer_views[2]),
+            view(layer_views[3]),
+            view(layer_views[4]),
+            view(layer_views[5]),
+            view(layer_views[0]),
         ],
-    })
+    )
 }
 
 /// Four `(u, v)` pairs as the two vectors the mode uniform holds (zero for none).
@@ -503,18 +497,8 @@ pub(crate) fn dds_texture(device: &wgpu::Device, queue: &wgpu::Queue, dds: &dds:
     texture
 }
 
-pub(super) fn depth_view(device: &wgpu::Device, (width, height): (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            // Read by the reflections, the sun's mask, the effects and the post pass.
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+pub(super) fn depth_view(device: &wgpu::Device, size: (u32, u32)) -> wgpu::TextureView {
+    // Read by the reflections, the sun's mask, the effects and the post pass.
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "depth", size, DEPTH_FORMAT, usage)
 }

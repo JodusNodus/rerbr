@@ -13,6 +13,7 @@ use super::meshes::{GpuMesh, MeshBuffers};
 use super::{Renderer, DEPTH_FORMAT};
 use crate::camera::Frustum;
 use crate::coords::FRONT_FACE;
+use crate::gpu_util;
 use crate::stage::{Anchor, Vertex};
 use crate::uploads::Uploads;
 use bytemuck::{Pod, Zeroable};
@@ -73,12 +74,7 @@ impl Motion {
                 count: None,
             }],
         });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("motion"),
-            size: size_of::<Uniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform = gpu_util::uniform_buffer(device, "motion", size_of::<Uniform>());
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("motion"),
             layout: &layout,
@@ -288,17 +284,15 @@ impl Renderer {
     }
 }
 
-fn target(device: &wgpu::Device, (width, height): (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("motion"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+fn target(device: &wgpu::Device, size: (u32, u32)) -> wgpu::TextureView {
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "motion", size, FORMAT, usage)
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_motion_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "Motion",
+    Uniform { view_projection, previous_view_projection, previous_body }
+);

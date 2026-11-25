@@ -3,6 +3,7 @@
 
 use super::{layer, noise, texture, Params, DETAIL_SIZE, SHAPE_SIZE, WEATHER_FORMAT, WEATHER_REACH, WEATHER_SIZE};
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util;
 use crate::renderer::uniforms::FrameUniform;
 use crate::renderer::{Gpu, ReadbackError, SHADER};
 use bytemuck::Zeroable;
@@ -25,10 +26,7 @@ impl CloudSurvey {
     /// Builds only the clouds' resources and two diagnostic pipelines. This does not construct a stage renderer.
     pub fn new(gpu: &Gpu) -> Self {
         let device = &gpu.device;
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("cloud survey"),
-            source: wgpu::ShaderSource::Wgsl(format!("{SHADER}\n{}", include_str!("survey.wgsl")).into()),
-        });
+        let shader = gpu_util::shader(device, "cloud survey", &format!("{SHADER}\n{}", include_str!("survey.wgsl")));
         let pipeline = |entry: &str, format: wgpu::TextureFormat| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(entry),
@@ -169,24 +167,9 @@ impl CloudSurvey {
         for (pipeline, groups, view) in
             [(&self.weather, &self.weather_groups, &self.weather_view), (&self.march, &self.march_groups, &target_view)]
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("cloud survey"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(pipeline);
-            for (i, group) in groups.iter().enumerate() {
-                pass.set_bind_group(i as u32, group, &[]);
-            }
-            pass.draw(0..3, 0..1);
+            let groups: Vec<_> = groups.iter().collect();
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            gpu_util::full_screen_pass(&mut encoder, "cloud survey", view, clear, pipeline, &groups);
         }
         encoder.copy_texture_to_buffer(
             target.as_image_copy(),

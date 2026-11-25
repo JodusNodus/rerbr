@@ -119,7 +119,8 @@ physics lives: [physics-map.md](physics-map.md).
 | [`rbr-school`](../crates/rbr-school) | the rally school: the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school) |
 | [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the community layouts, one module per format | [formats.md](../notes/formats.md) |
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |
-| [`rbr-ac-tracks`](../crates/rbr-ac-tracks) | Assetto Corsa tracks as BTB stages (experimental): KN5 and AI readers, the BTB writer, the import interface (the launcher's Add) | [assetto.md](../notes/assetto.md) |
+| [`rbr-ac-tracks`](../crates/rbr-ac-tracks) | Assetto Corsa tracks as BTB stages (experimental): KN5 and AI readers, the import interface (the launcher's Add) | [assetto.md](../notes/assetto.md) |
+| [`rbr-btb-writer`](../crates/rbr-btb-writer) | the BTB stage writing the converters share: textures, meshes, road, pacenotes, collision checks, preparation | [btb.md](../notes/btb.md) |
 | [`rbr-standalone`](../crates/rbr-standalone) | the physics process: `--live` steps the car for the viewer, `--boot` checks a recording | [physics.md](../notes/physics.md) |
 | [`rbr-engine`](../crates/rbr-engine) | engine models in place of NGP's torque formula: the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) | [engine-model.md](../notes/engine-model.md) |
 | [`rbr-tyre`](../crates/rbr-tyre) | tyre models in place of NGP's sliding model of the contact patch: in development, not released (`--physics experimental-brush` only) | [tyre-model.md](../notes/tyre-model.md) |

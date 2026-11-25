@@ -18,7 +18,7 @@ use crate::mesh::{self, Mat};
 use crate::needles;
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
-use rbr_ac_tracks::btb::textures::encode_bc7;
+use rbr_btb_writer::textures::encode_bc7;
 use rbr_formats::car_gauges::{self, Needle};
 use rbr_formats::{ini, rsf, sgc};
 use std::cell::RefCell;

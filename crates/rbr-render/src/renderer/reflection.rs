@@ -8,6 +8,7 @@ use super::textures::depth_view;
 use super::{depth_binding, Detail, Renderer, CLEAR_COLOR, DEPTH_FORMAT};
 use crate::camera::{self, Frustum};
 use crate::coords::{self, FRONT_FACE, NEAR};
+use crate::gpu_util::{self, FILTERING};
 use crate::profile::Profiler;
 use glam::camera::lh::view;
 use glam::{Mat4, Vec3};
@@ -477,52 +478,19 @@ impl ScreenReflection {
             multiview_mask: None,
             cache: None,
         });
-        let composite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("screen-space reflections' composite"),
-            entries: &[
-                texture_entry(0, TEXTURE),
-                texture_entry(
-                    1,
-                    wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                ),
-                texture_entry(2, depth_binding()),
-                texture_entry(3, TEXTURE),
-            ],
-        });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("screen-space reflections' composite"),
-            source: wgpu::ShaderSource::Wgsl(COMPOSITE.into()),
-        });
-        let composite = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("screen-space reflections' composite"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("screen-space reflections' composite"),
-                bind_group_layouts: &[Some(&composite_layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_composite"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: Default::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_composite"),
-                compilation_options: Default::default(),
-                // Every pixel written: the frame with its reflection laid over.
-                targets: &[Some(format.into())],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let label = "screen-space reflections' composite";
+        let composite_layout = gpu_util::layout(device, label, &[TEXTURE, PYRAMID, depth_binding(), TEXTURE]);
+        let module = gpu_util::shader(device, label, COMPOSITE);
+        let composite = gpu_util::full_screen_pipeline(
+            device,
+            label,
+            &module,
+            ("vs_composite", "fs_composite"),
+            &[&composite_layout],
+            // Every pixel written: the frame with its reflection laid over.
+            &[Some(format.into())],
+            &[],
+        );
         // The split trace's resolve (`fs_resolve`): the frame's levels and depth, the surfaces and the traced targets.
         let resolve_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("screen-space reflections' resolve"),
@@ -652,58 +620,50 @@ impl ScreenReflection {
             .collect();
         let scene = texture.create_view(&Default::default());
         let surface = (trace == Trace::Split).then(|| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("screen-space reflections' surfaces"),
-                    size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: SURFACE,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-                .create_view(&Default::default())
+            gpu_util::target(
+                device,
+                "screen-space reflections' surfaces",
+                (width, height),
+                SURFACE,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            )
         });
         // Without the surfaces, the frame's last level stands in (read by nothing).
         let surfaces = surface.as_ref().unwrap_or(&levels[levels.len() - 1]);
         let group_with = |surfaces| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("screen-space reflections"),
+            gpu_util::bind_group(
+                device,
+                "screen-space reflections",
                 layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&pyramid.view) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(surfaces) },
+                &[
+                    wgpu::BindingResource::TextureView(&scene),
+                    wgpu::BindingResource::TextureView(depth),
+                    wgpu::BindingResource::TextureView(&pyramid.view),
+                    wgpu::BindingResource::TextureView(surfaces),
                 ],
-            })
+            )
         };
         let (group, trace_group) = (group_with(&levels[levels.len() - 1]), group_with(surfaces));
         let traced = TRACED.map(|format| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("screen-space reflections, traced"),
-                    size: wgpu::Extent3d { width: traced_width, height: traced_height, depth_or_array_layers: 1 },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-                .create_view(&Default::default())
+            gpu_util::target(
+                device,
+                "screen-space reflections, traced",
+                (traced_width, traced_height),
+                format,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            )
         });
-        let composite_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("screen-space reflections' composite"),
-            layout: composite_layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&traced[0]) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&traced[1]) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&levels[0]) },
+        let composite_group = gpu_util::bind_group(
+            device,
+            "screen-space reflections' composite",
+            composite_layout,
+            &[
+                wgpu::BindingResource::TextureView(&traced[0]),
+                wgpu::BindingResource::TextureView(&traced[1]),
+                wgpu::BindingResource::TextureView(depth),
+                wgpu::BindingResource::TextureView(&levels[0]),
             ],
-        });
+        );
         let resolve_group = surface.as_ref().map(|surface| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("screen-space reflections' resolve"),
@@ -886,49 +846,19 @@ pub(super) struct Halver {
 
 impl Halver {
     pub(super) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, cap: Option<f32>) -> Halver {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("mip"),
-            entries: &[
-                texture_entry(0, TEXTURE),
-                texture_entry(1, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
-            ],
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("mip"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let layout = gpu_util::layout(device, "mip", &[TEXTURE, FILTERING]);
+        let sampler = gpu_util::linear_clamp(device, "mip");
         let constants: Vec<_> = cap.map(|cap| ("REFLECTED_CAP", f64::from(cap))).into_iter().collect();
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mip"),
-            source: wgpu::ShaderSource::Wgsl(BLIT.into()),
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mip"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("mip"),
-                bind_group_layouts: &[Some(&layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_blit"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: Default::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some(if cap.is_some() { "fs_blit_capped" } else { "fs_blit" }),
-                compilation_options: wgpu::PipelineCompilationOptions { constants: &constants, ..Default::default() },
-                targets: &[Some(format.into())],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let module = gpu_util::shader(device, "mip", BLIT);
+        let pipeline = gpu_util::full_screen_pipeline(
+            device,
+            "mip",
+            &module,
+            ("vs_blit", if cap.is_some() { "fs_blit_capped" } else { "fs_blit" }),
+            &[&layout],
+            &[Some(format.into())],
+            &constants,
+        );
         Halver { layout, sampler, pipeline }
     }
 
@@ -937,14 +867,12 @@ impl Halver {
         levels[..levels.len() - 1]
             .iter()
             .map(|view| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("mip"),
-                    layout: &self.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
-                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    ],
-                })
+                gpu_util::bind_group(
+                    device,
+                    "mip",
+                    &self.layout,
+                    &[wgpu::BindingResource::TextureView(view), wgpu::BindingResource::Sampler(&self.sampler)],
+                )
             })
             .collect()
     }
@@ -957,22 +885,14 @@ impl Halver {
         sources: &[wgpu::BindGroup],
     ) {
         for (target, source) in levels.iter().skip(1).zip(sources) {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("mip"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(CLEAR_COLOR), store: wgpu::StoreOp::Store },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, source, &[]);
-            pass.draw(0..3, 0..1);
+            gpu_util::full_screen_pass(
+                encoder,
+                "mip",
+                target,
+                wgpu::LoadOp::Clear(CLEAR_COLOR),
+                &self.pipeline,
+                &[source],
+            );
         }
     }
 }

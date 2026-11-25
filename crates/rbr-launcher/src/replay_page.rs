@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use egui::RichText;
 use rbr_recording::{realtime, replay, splits::Splits};
 
-use crate::settings::{Clouds, Precipitation};
+use crate::settings::{Clouds, Rain};
 
 use crate::browser;
 use crate::kit;
@@ -268,8 +268,8 @@ fn conditions(args: &[String]) -> (String, Option<String>) {
     if let Some(clouds) = value(viewer, "--clouds").and_then(|v| Clouds::parse(&v)) {
         parts.push(clouds.label().into());
     }
-    if let Some(rain) = value(viewer, "--precipitation").and_then(|v| Precipitation::parse(&v)) {
-        parts.push(if rain == Precipitation::None {
+    if let Some(rain) = value(viewer, "--precipitation").and_then(|v| Rain::parse(&v)) {
+        parts.push(if rain == Rain::None {
             "No precipitation".into()
         } else {
             format!("{} precipitation", rain.label())

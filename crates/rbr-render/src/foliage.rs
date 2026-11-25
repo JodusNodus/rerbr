@@ -11,8 +11,11 @@ use crate::stage::{Draw, DrawState, Image, Mesh, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 use rbr_formats::dds::{self, Format};
 use rbr_formats::stage_files;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Plants lower than this, metres, are grass. Plant heights on three stages dip between 1.5 and 2 m, between the
 /// tufts and low plants and the bushes and trees.
@@ -193,8 +196,14 @@ struct Shape {
     width: usize,
     height: usize,
     texels: Vec<u8>,
-    marks: Mutex<HashMap<[i64; 4], Option<Marks>>>,
+    marks: Mutex<HashMap<[usize; 4], PartMarks>>,
+    /// Its marks' file in the cache ([`use_cache`]) and how many marks it held: written again on drop when more were
+    /// made.
+    file: Option<(PathBuf, usize)>,
 }
+
+/// A part's marks ([`Shape::marks`]), made by the first thread that wants them.
+type PartMarks = Arc<OnceLock<Option<Marks>>>;
 
 impl Shape {
     fn new(width: usize, rgba: &[u8], alpha_ref: u8) -> Shape {
@@ -202,29 +211,113 @@ impl Shape {
             .chunks_exact(4)
             .map(|t| if t[3] > alpha_ref { DRAWN } else { 0 } | if green([t[0], t[1], t[2]]) { GREEN } else { 0 })
             .collect::<Vec<_>>();
-        Shape { width, height: texels.len() / width, texels, marks: Mutex::default() }
+        let file = CACHE.get().map(|dir| {
+            let mut key = Sha256::new();
+            key.update((width as u32).to_le_bytes());
+            key.update([alpha_ref]);
+            key.update(rgba);
+            dir.join(MARKS_FOLDER).join(format!("{:x}.bin", key.finalize()))
+        });
+        let marks: HashMap<_, _> = file.as_deref().map(read_marks).unwrap_or_default();
+        let file = file.map(|path| (path, marks.len()));
+        Shape { width, height: texels.len() / width, texels, marks: Mutex::new(marks), file }
     }
 
     /// The marks of the texels under the uv rectangle `low` to `high` (the texture repeats; at most one copy of it each
-    /// way), `None` with fewer than 4 drawn.
+    /// way), `None` with fewer than 4 drawn. Kept by the part's place within one copy of the texture and its size, so
+    /// pieces in other copies share it, and made once: a thread wanting a part another is making waits for it (580's
+    /// pieces asked for 76 799 parts, 26 871 of them unlike, 2026-11-25).
     fn marks(&self, low: [f32; 2], high: [f32; 2]) -> Option<Marks> {
+        // Each axis's first texel within one copy, and how many texels (at most the texture's size).
         let span = |size: usize, k: usize| {
             let from = (low[k] * size as f32).floor() as i64;
-            (from, ((high[k] * size as f32).ceil() as i64).clamp(from + 1, from + size as i64))
+            let to = ((high[k] * size as f32).ceil() as i64).clamp(from + 1, from + size as i64);
+            (from.rem_euclid(size as i64) as usize, (to - from) as usize)
         };
-        let ((x0, x1), (y0, y1)) = (span(self.width, 0), span(self.height, 1));
-        if let Some(&marks) = self.marks.lock().unwrap().get(&[x0, y0, x1, y1]) {
-            return marks;
-        }
-        let (width, height) = (self.width as i64, self.height as i64);
-        let part: Vec<u8> = (y0..y1)
-            .flat_map(|y| (x0..x1).map(move |x| (y.rem_euclid(height) * width + x.rem_euclid(width)) as usize))
-            .map(|i| self.texels[i])
-            .collect();
-        let marks = Marks::of(&part, (x1 - x0) as usize);
-        self.marks.lock().unwrap().insert([x0, y0, x1, y1], marks);
-        marks
+        let ((x0, columns), (y0, rows)) = (span(self.width, 0), span(self.height, 1));
+        let once = Arc::clone(self.marks.lock().unwrap().entry([x0, y0, columns, rows]).or_default());
+        *once.get_or_init(|| {
+            // Each row's texels from `x0`, carried on at the row's start past its end.
+            let first = columns.min(self.width - x0);
+            let mut part = Vec::with_capacity(columns * rows);
+            for y in y0..y0 + rows {
+                let row = &self.texels[(y % self.height) * self.width..][..self.width];
+                part.extend_from_slice(&row[x0..x0 + first]);
+                part.extend_from_slice(&row[..columns - first]);
+            }
+            Marks::of(&part, columns)
+        })
     }
+}
+
+impl Drop for Shape {
+    fn drop(&mut self) {
+        let Some((path, read)) = &self.file else { return };
+        let marks = self.marks.get_mut().unwrap();
+        let made: Vec<([usize; 4], Option<Marks>)> = marks.iter().filter_map(|(&k, m)| Some((k, *m.get()?))).collect();
+        if made.len() > *read {
+            if let Err(e) = write_marks(path, &made) {
+                eprintln!("foliage: {}: {e}", path.display());
+            }
+        }
+    }
+}
+
+/// The folder [`Shape`]s keep their marks in between loads ([`use_cache`]); none: made again each load.
+static CACHE: OnceLock<PathBuf> = OnceLock::new();
+/// The cache's folder for the marks: raise its number when [`Marks`] or the texels they are counted from change.
+const MARKS_FOLDER: &str = "foliage-marks-1";
+/// A cache entry's bytes: the part's place and size (4 `u16`), whether it has marks, and the marks (4 `f32`).
+const ENTRY: usize = 4 * 2 + 1 + 4 * 4;
+
+/// Keeps the shape test's marks in files under `dir` between loads (ours): a file per texture by the SHA-256 of the
+/// texels and alpha reference tested, holding each part's marks (25 bytes a part, 670 KB for 580's 26 871). A load
+/// of a stage seen before reads them instead of counting texels (580: mesh prepare 9.4 to 0.9 s, load 21 to 11.5 s,
+/// 2026-11-25). Set once, before the stage's renderer is made.
+pub fn use_cache(dir: PathBuf) {
+    let _ = CACHE.set(dir);
+}
+
+/// The marks in the cache file `path`; none where it is missing or does not read.
+fn read_marks(path: &Path) -> HashMap<[usize; 4], PartMarks> {
+    let Ok(bytes) = std::fs::read(path) else { return HashMap::new() };
+    if !bytes.len().is_multiple_of(ENTRY) {
+        return HashMap::new();
+    }
+    let word = |b: &[u8], i: usize| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]) as usize;
+    let float = |b: &[u8], i: usize| f32::from_le_bytes(b[9 + 4 * i..13 + 4 * i].try_into().unwrap());
+    bytes
+        .chunks_exact(ENTRY)
+        .map(|b| {
+            let marks = (b[8] == 1).then(|| Marks {
+                holes: float(b, 0),
+                blobs: float(b, 1),
+                green: float(b, 2),
+                straight: float(b, 3),
+            });
+            ([0, 1, 2, 3].map(|i| word(b, i)), Arc::new(OnceLock::from(marks)))
+        })
+        .collect()
+}
+
+/// Writes `marks` as the cache file `path`: written whole, then renamed, so a stopped load leaves no part file in its
+/// place and two loads writing it at once each write their own.
+fn write_marks(path: &Path, marks: &[([usize; 4], Option<Marks>)]) -> std::io::Result<()> {
+    let mut bytes = Vec::with_capacity(marks.len() * ENTRY);
+    for (key, m) in marks {
+        let Ok(key) = key.map(u16::try_from).into_iter().collect::<Result<Vec<u16>, _>>() else { continue };
+        key.iter().for_each(|w| bytes.extend_from_slice(&w.to_le_bytes()));
+        bytes.push(u8::from(m.is_some()));
+        let m = m.map_or([0.0; 4], |m| [m.holes, m.blobs, m.green, m.straight]);
+        m.iter().for_each(|f| bytes.extend_from_slice(&f.to_le_bytes()));
+    }
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    static WRITES: AtomicUsize = AtomicUsize::new(0);
+    let part = path.with_extension(format!("part-{}-{}", std::process::id(), WRITES.fetch_add(1, Ordering::Relaxed)));
+    std::fs::write(&part, bytes)?;
+    std::fs::rename(&part, path)
 }
 
 /// Whether an RGB texel is green: hue 50 to 170 degrees, saturation (chroma over the largest channel) over 0.12.
@@ -245,7 +338,7 @@ fn green(rgb: [u8; 3]) -> bool {
 }
 
 /// What a part of a texture shows, for [`Marks::structure`]. Counts are per square root of the drawn texels.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Marks {
     /// Undrawn areas that do not reach the part's edge: the gaps between leaves and twigs.
     holes: f32,
@@ -267,29 +360,39 @@ impl Marks {
         if count < 4 {
             return None;
         }
-        let border =
-            |i: usize| i.is_multiple_of(width) || i % width == width - 1 || i < width || i >= part.len() - width;
-        let edge: Vec<bool> = (0..part.len())
-            .map(|i| {
-                drawn(i) && (border(i) || !drawn(i - 1) || !drawn(i + 1) || !drawn(i - width) || !drawn(i + width))
-            })
-            .collect();
-        // A run's texels beyond the part's edge mirror those within it.
-        let mirror = |mut j: i64, size: usize| {
-            let size = size as i64;
-            while !(0..size).contains(&j) {
-                j = if j < 0 { -j - 1 } else { 2 * size - j - 1 };
+        // Row by row, with no division per texel: drawn, beside an undrawn one or the part's edge.
+        let mut edge = vec![false; part.len()];
+        for y in 0..height {
+            for x in 0..width {
+                let i = y * width + x;
+                let border = x == 0 || y == 0 || x + 1 == width || y + 1 == height;
+                edge[i] =
+                    drawn(i) && (border || !drawn(i - 1) || !drawn(i + 1) || !drawn(i - width) || !drawn(i + width));
             }
-            j as usize
-        };
-        let straight = (0..part.len())
-            .filter(|&i| edge[i])
-            .filter(|&i| {
-                let (x, y) = ((i % width) as i64, (i / width) as i64);
-                (-3..=3).all(|d| edge[y as usize * width + mirror(x + d, width)])
-                    || (-3..=3).all(|d| edge[mirror(y + d, height) * width + x as usize])
-            })
-            .count();
+        }
+        // A run's texels beyond the part's edge mirror those within it, so the run of 7 about a texel is all edge when
+        // its texels from 3 before to 3 after, held within the part, are: counted from running sums of the edge texels
+        // along each row (`across`, a row of `width + 1`) and down each column (`down`, rows of `width`).
+        let mut across = vec![0u32; (width + 1) * height];
+        let mut down = vec![0u32; width * (height + 1)];
+        for y in 0..height {
+            for x in 0..width {
+                let e = u32::from(edge[y * width + x]);
+                across[y * (width + 1) + x + 1] = across[y * (width + 1) + x] + e;
+                down[(y + 1) * width + x] = down[y * width + x] + e;
+            }
+        }
+        let mut straight = 0;
+        for y in 0..height {
+            let (top, bottom) = (y.saturating_sub(3), (y + 4).min(height));
+            for x in (0..width).filter(|&x| edge[y * width + x]) {
+                let (left, right) = (x.saturating_sub(3), (x + 4).min(width));
+                let row = &across[y * (width + 1)..];
+                let run_across = row[right] - row[left] == (right - left) as u32;
+                let run_down = down[bottom * width + x] - down[top * width + x] == (bottom - top) as u32;
+                straight += usize::from(run_across || run_down);
+            }
+        }
         let edges = edge.iter().filter(|&&e| e).count();
         let root = (count as f32).sqrt();
         Some(Marks {
@@ -320,36 +423,57 @@ impl Marks {
     }
 }
 
-/// The 4-connected areas of `width` by `height` texels where `inside` holds, and how many of them touch no edge.
+/// The 4-connected areas of `width` by `height` texels where `inside` holds, and how many of them touch no edge: each
+/// row's runs of them joined to the runs of the row above they overlap.
 fn areas(width: usize, height: usize, inside: impl Fn(usize) -> bool) -> (usize, usize) {
-    let mut seen = vec![false; width * height];
-    let (mut all, mut enclosed) = (0, 0);
-    let mut open = Vec::new();
-    for start in 0..width * height {
-        if seen[start] || !inside(start) {
-            continue;
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
         }
-        seen[start] = true;
-        open.push(start);
-        let mut touches = false;
-        while let Some(i) = open.pop() {
-            let (x, y) = (i % width, i / width);
-            touches |= x == 0 || y == 0 || x == width - 1 || y == height - 1;
-            for (beside, j) in [
-                (x > 0, i.wrapping_sub(1)),
-                (x + 1 < width, i + 1),
-                (y > 0, i.wrapping_sub(width)),
-                (y + 1 < height, i + width),
-            ] {
-                if beside && !seen[j] && inside(j) {
-                    seen[j] = true;
-                    open.push(j);
-                }
+        i
+    }
+    // Per run: its parent run and whether it touches an edge. Runs of the row above and this row: (from, to, run).
+    let (mut parent, mut touches) = (Vec::new(), Vec::new());
+    let (mut above, mut this) = (Vec::<(usize, usize, usize)>::new(), Vec::new());
+    for y in 0..height {
+        this.clear();
+        let mut x = 0;
+        while x < width {
+            if !inside(y * width + x) {
+                x += 1;
+                continue;
+            }
+            let from = x;
+            while x < width && inside(y * width + x) {
+                x += 1;
+            }
+            this.push((from, x, parent.len()));
+            parent.push(parent.len());
+            touches.push(y == 0 || y == height - 1 || from == 0 || x == width);
+        }
+        let (mut i, mut j) = (0, 0);
+        while i < this.len() && j < above.len() {
+            let ((a0, a1, a), (b0, b1, b)) = (this[i], above[j]);
+            if a0 < b1 && b0 < a1 {
+                let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+                parent[ra] = rb;
+            }
+            if a1 < b1 {
+                i += 1;
+            } else {
+                j += 1;
             }
         }
-        all += 1;
-        enclosed += usize::from(!touches);
+        std::mem::swap(&mut above, &mut this);
     }
+    let mut touched = vec![false; parent.len()];
+    for (run, &touch) in touches.iter().enumerate() {
+        let r = root(&mut parent, run);
+        touched[r] |= touch;
+    }
+    let roots = (0..parent.len()).filter(|&run| parent[run] == run);
+    let (all, enclosed) = roots.fold((0, 0), |(all, enclosed), r| (all + 1, enclosed + usize::from(!touched[r])));
     (all, enclosed)
 }
 
@@ -786,7 +910,7 @@ fn pieces<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{green, pieces, structure, Cut, Marks, DRAWN, GREEN};
+    use super::{green, pieces, read_marks, structure, write_marks, Cut, Marks, DRAWN, GREEN};
     use crate::stage::{Address, Anchor, Draw, DrawState, Layer, Lod, Mesh, Vertex};
     use bytemuck::Zeroable;
     use glam::Vec3;
@@ -911,6 +1035,122 @@ mod tests {
         assert_eq!((marks.holes, marks.blobs), (2.0 / root, 2.0 / root));
         assert_eq!(marks.green, 62.0 / 63.0);
         assert!(Marks::of(&[DRAWN, DRAWN, DRAWN, 0], 2).is_none(), "fewer than 4 drawn");
+    }
+
+    /// [`Marks::of`] as it was written first, texel by texel: a flood fill per area, each run of 7 read through the
+    /// mirror. The kept one must give the same marks.
+    fn marks_texel_by_texel(part: &[u8], width: usize) -> Option<(f32, f32, f32, f32)> {
+        let height = part.len() / width;
+        let drawn = |i: usize| part[i] & DRAWN != 0;
+        let count = (0..part.len()).filter(|&i| drawn(i)).count();
+        if count < 4 {
+            return None;
+        }
+        let border =
+            |i: usize| i.is_multiple_of(width) || i % width == width - 1 || i < width || i >= part.len() - width;
+        let edge: Vec<bool> = (0..part.len())
+            .map(|i| {
+                drawn(i) && (border(i) || !drawn(i - 1) || !drawn(i + 1) || !drawn(i - width) || !drawn(i + width))
+            })
+            .collect();
+        let mirror = |mut j: i64, size: usize| {
+            let size = size as i64;
+            while !(0..size).contains(&j) {
+                j = if j < 0 { -j - 1 } else { 2 * size - j - 1 };
+            }
+            j as usize
+        };
+        let straight = (0..part.len())
+            .filter(|&i| edge[i])
+            .filter(|&i| {
+                let (x, y) = ((i % width) as i64, (i / width) as i64);
+                (-3..=3).all(|d| edge[y as usize * width + mirror(x + d, width)])
+                    || (-3..=3).all(|d| edge[mirror(y + d, height) * width + x as usize])
+            })
+            .count();
+        let areas = |inside: &dyn Fn(usize) -> bool| {
+            let mut seen = vec![false; part.len()];
+            let (mut all, mut enclosed) = (0, 0);
+            for start in 0..part.len() {
+                if seen[start] || !inside(start) {
+                    continue;
+                }
+                seen[start] = true;
+                let (mut open, mut touches) = (vec![start], false);
+                while let Some(i) = open.pop() {
+                    let (x, y) = (i % width, i / width);
+                    touches |= x == 0 || y == 0 || x == width - 1 || y == height - 1;
+                    for (beside, j) in [
+                        (x > 0, i.wrapping_sub(1)),
+                        (x + 1 < width, i + 1),
+                        (y > 0, i.wrapping_sub(width)),
+                        (y + 1 < height, i + width),
+                    ] {
+                        if beside && !seen[j] && inside(j) {
+                            seen[j] = true;
+                            open.push(j);
+                        }
+                    }
+                }
+                all += 1;
+                enclosed += usize::from(!touches);
+            }
+            (all, enclosed)
+        };
+        let root = (count as f32).sqrt();
+        let edges = edge.iter().filter(|&&e| e).count();
+        Some((
+            areas(&|i| !drawn(i)).1 as f32 / root,
+            areas(&drawn).0 as f32 / root,
+            part.iter().filter(|&&t| t == DRAWN | GREEN).count() as f32 / count as f32,
+            straight as f32 / edges.max(1) as f32,
+        ))
+    }
+
+    #[test]
+    fn marks_read_back_from_the_cache() {
+        let path = std::env::temp_dir().join(format!("rerbr-marks-{}", std::process::id())).join("a.bin");
+        let some = Marks { holes: 0.25, blobs: 1.0 / 3.0, green: 0.9, straight: 0.1 };
+        let made = [([0, 8, 1024, 512], Some(some)), ([1023, 0, 1, 1], None), ([70_000, 0, 1, 1], Some(some))];
+        write_marks(&path, &made).unwrap();
+        let read = read_marks(&path);
+        assert_eq!(read.len(), 2, "a place past u16 is not kept");
+        assert_eq!(read[&[0, 8, 1024, 512]].get(), Some(&Some(some)));
+        assert_eq!(read[&[1023, 0, 1, 1]].get(), Some(&None));
+        // A file of another length reads as none.
+        std::fs::write(&path, [0; 7]).unwrap();
+        assert!(read_marks(&path).is_empty());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn marks_match_the_texel_by_texel_count() {
+        // Parts 1 to 40 texels each way, drawn at several densities, in clumps (a plant's leaves) or texel by texel.
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for case in 0..3000 {
+            let (width, height) = (1 + next() as usize % 40, 1 + next() as usize % 40);
+            let density = (case % 9) as u64 + 1;
+            let clump = 1 + case % 4;
+            let part: Vec<u8> = (0..width * height)
+                .map(|i| {
+                    let cell = (i % width / clump) * 7919 + (i / width / clump) * 104_729;
+                    let draw = (next() ^ (cell as u64 * u64::from(clump > 1))) % 10 < density;
+                    if draw {
+                        DRAWN | if next() % 3 == 0 { 0 } else { GREEN }
+                    } else {
+                        0
+                    }
+                })
+                .collect();
+            let fast = Marks::of(&part, width).map(|m| (m.holes, m.blobs, m.green, m.straight));
+            assert_eq!(fast, marks_texel_by_texel(&part, width), "case {case}, {width}x{height}");
+        }
     }
 
     #[test]

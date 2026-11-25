@@ -1,7 +1,7 @@
 //! DiRT Rally's frame to the stage's: DiRT Rally is right handed, y up, in metres (gate crossings lie on the drawn
 //! terrain to 0.24 m, a gate's `left` is up × forward); the converted world is z up with DR's `(x, y, z)` at
 //! `(x, -z, y)`, the frame `rbr_ac_tracks` builds a stage in (`assetto::ai::world`, the same for AC's frame). The map
-//! is a rotation about x; a `btb::geometry::Triangle` holds the left-handed BTB mesh's winding, so a DR triangle
+//! is a rotation about x; a `rbr_btb_writer::geometry::Triangle` holds the left-handed BTB mesh's winding, so a DR triangle
 //! `(a, b, c)` becomes `(a, c, b)`, as the AC converter turns its faces.
 
 /// A DiRT Rally position or direction in the stage's world.

@@ -127,7 +127,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
     let report = stage::convert(&input, &options)?;
     println!("{}\n{report:?}", report.folder.display());
     if let Some(dir) = prepare {
-        let name = crate::btb::stage::prepare(&report.folder, &dir, maps.as_deref())?;
+        let name = rbr_btb_writer::stage::prepare(&report.folder, &dir, maps.as_deref())?;
         println!("Prepared: {name}");
     }
     Ok(())

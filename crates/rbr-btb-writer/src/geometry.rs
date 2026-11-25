@@ -1,5 +1,12 @@
 //! Shared world geometry in metres, z up.
 
+/// Side of the cells ReRBR merges drawn meshes into (`CELL` in its BTB stage), metres.
+pub const SCENERY_CELL: f64 = 128.;
+/// Side of the tiles collision meshes are grouped in, metres.
+pub const COLLISION_TILE: f64 = 300.;
+/// Nothing past this distance from the course is drawn: ReRBR's far plane (`coords::FAR`), metres.
+pub const FAR_REACH: f64 = 10_000.;
+
 /// One world triangle, corners in the mesh's winding.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Triangle {

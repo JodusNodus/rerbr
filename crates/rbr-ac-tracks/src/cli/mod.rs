@@ -45,7 +45,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             if let Some(extra) = args.next() {
                 return Err(format!("unexpected probe argument {extra}"));
             }
-            crate::btb::probe::run(Path::new(&dir))
+            rbr_btb_writer::probe::run(Path::new(&dir))
         }
         Some(other) => Err(format!("unknown command {other}\n{HELP}")),
     }
@@ -67,7 +67,7 @@ fn prepare(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         };
         *target = Some(std::path::PathBuf::from(args.next().ok_or_else(|| format!("{arg} needs a value"))?));
     }
-    let name = crate::btb::stage::prepare(
+    let name = rbr_btb_writer::stage::prepare(
         &track.ok_or("prepare needs --track STAGE_FOLDER")?,
         &out.ok_or("prepare needs --out PREPARED_DIR")?,
         maps.as_deref(),

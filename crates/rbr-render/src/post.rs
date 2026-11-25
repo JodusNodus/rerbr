@@ -4,6 +4,7 @@
 
 use wgpu::util::DeviceExt;
 
+use crate::gpu_util::{self, CLEAR, FILTERING, STORAGE, UNIFORM};
 use crate::renderer::{depth_binding, texture_entry, TEXTURE};
 use crate::skylight::NIGHT_PRE_EXPOSURE;
 
@@ -186,25 +187,12 @@ impl Post {
         debug_view: u32,
         grade: Option<&[u8]>,
     ) -> Post {
-        let source_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("post source"),
-            entries: &[
-                texture_entry(0, TEXTURE),
-                texture_entry(1, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
-            ],
-        });
+        let source_layout = gpu_util::layout(device, "post source", &[TEXTURE, FILTERING]);
         let composite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post bloom"),
             entries: &[
                 texture_entry(0, TEXTURE),
-                texture_entry(
-                    1,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
+                texture_entry(1, STORAGE),
                 texture_entry(2, TEXTURE),
                 texture_entry(3, depth_binding()),
                 texture_entry(
@@ -215,68 +203,28 @@ impl Post {
                         multisampled: false,
                     },
                 ),
-                texture_entry(
-                    4,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
+                texture_entry(4, UNIFORM),
             ],
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("post"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("post"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let sampler = gpu_util::linear_clamp(device, "post");
+        let shader = gpu_util::shader(device, "post", SHADER);
         let pipeline = |entry: &str,
                         layouts: &[&wgpu::BindGroupLayout],
                         target: wgpu::ColorTargetState,
                         constants: &[(&str, f64)]| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry),
-                layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some(entry),
-                    bind_group_layouts: &layouts.iter().copied().map(Some).collect::<Vec<_>>(),
-                    immediate_size: 0,
-                })),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_full"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some(entry),
-                    compilation_options: wgpu::PipelineCompilationOptions { constants, ..Default::default() },
-                    targets: &[Some(target)],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
+            gpu_util::full_screen_pipeline(
+                device,
+                entry,
+                &shader,
+                ("vs_full", entry),
+                layouts,
+                &[Some(target)],
+                constants,
+            )
         };
         let glare_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post glare"),
-            entries: &[texture_entry(
-                1,
-                wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-            )],
+            entries: &[texture_entry(1, STORAGE)],
         });
         let down = ["fs_glare_first", "fs_glare_down"]
             .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), &[]));
@@ -308,16 +256,7 @@ impl Post {
             ];
             pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
         });
-        let meter = ["cs_histogram", "cs_meter"].map(|entry| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(entry),
-                layout: None,
-                module: &shader,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        });
+        let meter = ["cs_histogram", "cs_meter"].map(|entry| gpu_util::compute_pipeline(device, entry, &shader, entry));
         let buffer = |label, size, usage| {
             device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
         };
@@ -328,8 +267,7 @@ impl Post {
             entries: &[wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() }],
         });
         let histogram = buffer("histogram", METER_SLOTS * 4, wgpu::BufferUsages::STORAGE);
-        let meter_settings =
-            buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
+        let meter_settings = gpu_util::uniform_buffer(device, "meter", size_of::<Meter>());
         let table = device.create_texture_with_data(
             queue,
             &wgpu::TextureDescriptor {
@@ -443,28 +381,6 @@ impl Post {
         };
         queue.write_buffer(&self.meter_settings, 0, bytemuck::bytes_of(&settings));
         let t = &self.targets;
-        let pass = |encoder: &mut wgpu::CommandEncoder,
-                    view: &wgpu::TextureView,
-                    load,
-                    pipeline: &wgpu::RenderPipeline,
-                    groups: &[&wgpu::BindGroup]| {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("post"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(pipeline);
-            for (index, group) in groups.iter().enumerate() {
-                pass.set_bind_group(index as u32, *group, &[]);
-            }
-            pass.draw(0..3, 0..1);
-        };
-        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
         {
             let mut pass =
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("meter"), ..Default::default() });
@@ -477,26 +393,19 @@ impl Post {
             }
         }
         for (index, (level, source)) in t.levels.iter().zip(&t.sources).enumerate() {
-            pass(encoder, level, clear, &self.down[usize::from(index > 0)], &[source, &self.glare]);
+            let pipeline = &self.down[usize::from(index > 0)];
+            gpu_util::full_screen_pass(encoder, "post", level, CLEAR, pipeline, &[source, &self.glare]);
         }
         for index in (1..t.levels.len()).rev() {
-            pass(encoder, &t.levels[index - 1], wgpu::LoadOp::Load, &self.up, &[&t.sources[index + 1]]);
+            let (level, source) = (&t.levels[index - 1], &t.sources[index + 1]);
+            gpu_util::full_screen_pass(encoder, "post", level, wgpu::LoadOp::Load, &self.up, &[source]);
         }
         let composite = &self.composite[usize::from(cabin_depth > 0.0)];
         let Some([x, y, width, height]) = viewport else {
-            pass(encoder, target, clear, composite, &[&t.sources[0], &t.composite]);
+            gpu_util::full_screen_pass(encoder, "post", target, CLEAR, composite, &[&t.sources[0], &t.composite]);
             return;
         };
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("post"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-            })],
-            ..Default::default()
-        });
+        let mut pass = gpu_util::colour_pass(encoder, "post", target, wgpu::LoadOp::Load);
         pass.set_viewport(x as f32, y as f32, width as f32, height as f32, 0.0, 1.0);
         pass.set_pipeline(composite);
         pass.set_bind_group(0, &t.sources[0], &[]);
@@ -517,33 +426,17 @@ fn targets(
     (width, height): (u32, u32),
     shafts: bool,
 ) -> (wgpu::TextureView, Targets) {
-    let texture = |label, width: u32, height: u32| {
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: SCENE_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        })
+    let texture = |label, width, height| {
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST;
+        gpu_util::target(device, label, (width, height), SCENE_FORMAT, usage)
     };
-    let scene = texture("hdr scene", width, height).create_view(&Default::default());
-    let levels: Vec<_> = (1..=LEVELS)
-        .map(|level| texture("bloom", width >> level, height >> level).create_view(&Default::default()))
-        .collect();
+    let scene = texture("hdr scene", width, height);
+    let levels: Vec<_> = (1..=LEVELS).map(|level| texture("bloom", width >> level, height >> level)).collect();
     let source = |view: &wgpu::TextureView| {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("post source"),
-            layout: source_layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
-            ],
-        })
+        let resources = [wgpu::BindingResource::TextureView(view), wgpu::BindingResource::Sampler(sampler)];
+        gpu_util::bind_group(device, "post source", source_layout, &resources)
     };
     let sources = std::iter::once(&scene).chain(&levels).map(source).collect();
     let group = |pipeline: &wgpu::ComputePipeline, index, entries: &[wgpu::BindGroupEntry]| {
@@ -592,20 +485,17 @@ fn targets(
     let shafts = match shafts {
         true => texture("light shafts", width.div_ceil(4), height.div_ceil(4)),
         false => texture("no light shafts", 1, 1),
-    }
-    .create_view(&Default::default());
-    let composite = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("post bloom"),
-        layout: composite_layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&levels[0]) },
-            wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&shafts) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(depth) },
-            wgpu::BindGroupEntry { binding: 4, resource: meter_settings.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(grade) },
-        ],
-    });
+    };
+    use wgpu::BindingResource::TextureView;
+    let resources = [
+        TextureView(&levels[0]),
+        exposure.as_entire_binding(),
+        TextureView(&shafts),
+        TextureView(depth),
+        meter_settings.as_entire_binding(),
+        TextureView(grade),
+    ];
+    let composite = gpu_util::bind_group(device, "post bloom", composite_layout, &resources);
     (scene, Targets { levels, sources, composite, shafts, meter })
 }
 
@@ -644,3 +534,11 @@ mod tests {
         assert!(depth(eye + forward * 1.0) > at && depth(eye + forward * 5.0) < at);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_meter_keeps_the_shaders_layout,
+    SHADER,
+    "Meter",
+    Meter { step, snap, cabin_depth, pre_exposure, exposure, fixed, inverse, clouds, to_sun }
+);
