@@ -100,7 +100,7 @@ pub fn interior(pssg: &Pssg) -> Result<Vec<Part>, String> {
             positions: mesh.positions,
             normals: mesh.normals,
             uv: mesh.uv,
-            uv2: Vec::new(),
+            uv2: mesh.uv2.unwrap_or_default(),
             triangles: mesh.triangles,
         };
         match out.iter_mut().find(|p| p.name == mesh.node) {

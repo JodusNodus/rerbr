@@ -24,7 +24,6 @@ impl Plane {
     }
 
     /// A plane of `width` by `height` values.
-    #[cfg(test)]
     pub fn from_values(values: Vec<u8>, width: usize, height: usize) -> Plane {
         Plane { values, width, height }
     }
@@ -98,6 +97,18 @@ pub fn diffuse(diffuse: &Texture, occlusion: Option<&(Plane, f32)>, specular: Op
 /// A normal map as the renderer's bump reads it ([`repacked`]), BC7.
 pub fn normal(map: &Texture, crumpled: bool) -> Vec<u8> {
     encode_bc7(false, map.width, map.height, repacked(map, crumpled))
+}
+
+/// The carbon weave's direction map (`TCarbonVectorMap`: the direction is its red and blue, `*2-1`) as the renderer's bump
+/// slot reads it: red as it is and green the blue, BC7.
+pub fn direction(map: &Texture) -> Vec<u8> {
+    encode_bc7(false, map.width, map.height, directions(map))
+}
+
+fn directions(map: &Texture) -> Vec<u8> {
+    let mut rgba = map.rgba();
+    rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[3]) = (p[2], 255));
+    rgba
 }
 
 /// `map`'s texels as the renderer's bump reads them: red x, green y along v (down the image), blue and alpha 255 (z is
@@ -237,6 +248,14 @@ mod tests {
         let file = rbr_formats::dds::parse(&dds).unwrap();
         assert_eq!((file.width, file.height), (16, 16));
         assert!(file.levels().len() > 1);
+    }
+
+    #[test]
+    fn a_direction_map_keeps_red_and_copies_blue_to_green() {
+        let map = dxt1_of(8, 8, [248, 8, 200]);
+        let texel = &directions(&map)[..4];
+        assert!(texel[0].abs_diff(248) <= 8 && texel[1].abs_diff(200) <= 8 && texel[3] == 255, "{texel:?}");
+        assert_eq!(&direction(&map)[84..88], b"DX10");
     }
 
     #[test]
