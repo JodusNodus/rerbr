@@ -80,7 +80,9 @@ impl Style {
 struct Finish {
     /// The DiRT material id as a name part (`shiny_painted_metal`).
     slug: String,
-    /// `plain`, `flock`, `carbon`, or the exterior's `gated` (the lights' pod: the reflection follows the lit albedo).
+    /// The interior's `plain`, `flock`, `carbon`; the exterior's `exterior` and `gated` (the lights' pod: the reflection
+    /// follows the lit albedo). The renderer gives an interior kind the cabin's light, which the outside's copy of the
+    /// cabin (`e_internal`) has not.
     kind: &'static str,
     /// `FresnelMin`, `FresnelMax`, `FresnelPower`.
     fresnel: [f32; 3],
@@ -214,7 +216,7 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         };
         return match &name[title.len()..] {
             // The rim's specular is the atlas's alpha as it is (reference 1).
-            " Wheel" => Some(Style { finish: Some(exterior_finish(m, "plain", 2.0)), ..atlas("CarRim") }),
+            " Wheel" => Some(Style { finish: Some(exterior_finish(m, "exterior", 2.0)), ..atlas("CarRim") }),
             " Tyre Wall" => Some(atlas("CarTire")),
             " Tyre Tread" => Some(
                 Style::new("CarTire", format!("tyre_{class}"), generic(short, "tread"))
@@ -247,9 +249,9 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         // The paint keeps no finish (the renderer's clear coat); the bare metal's finish makes it a material of its own.
         "Car Body Paint" => Some(body("CarPaint")),
         "Shiny Metal" => {
-            Some(Style { finish: Some(exterior_finish(m, "plain", 2.0 * FULL_SPECULAR)), ..body("CarPaint") })
+            Some(Style { finish: Some(exterior_finish(m, "exterior", 2.0 * FULL_SPECULAR)), ..body("CarPaint") })
         }
-        "Matt" => Some(Style { finish: Some(exterior_finish(m, "plain", FULL_SPECULAR)), ..body("CarTexture") }),
+        "Matt" => Some(Style { finish: Some(exterior_finish(m, "exterior", FULL_SPECULAR)), ..body("CarTexture") }),
         "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTexture")),
         "Cabin" => Some(matt("cabin", own("cabin"))),
         "Window Glass" => Some(Style { opacity: true, ..Style::new("CarGlass", "glass", own("glass")) }),
@@ -1899,7 +1901,7 @@ mod tests {
             move |key: &str| keys.get(key).cloned()
         };
         let metal = styled("Shiny Metal", &fresnel);
-        assert_eq!(metal("Finish").as_deref(), Some("plain"));
+        assert_eq!(metal("Finish").as_deref(), Some("exterior"));
         assert_eq!(metal("FinishFresnel").as_deref(), Some("0.8 1 5"));
         assert_eq!(metal("FinishEnvironment").as_deref(), Some("1 1 1 0"));
         assert_eq!(metal("FinishPhong").as_deref(), Some("10 1 1 1 1"));
