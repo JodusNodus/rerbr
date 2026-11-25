@@ -182,8 +182,8 @@ impl Renderer {
     /// drawn into a staging cube and copied into the sampled one, which the frames bind.
     pub(super) fn update_reflection(&self, profiler: &mut Option<Profiler>) {
         // Baked probes stand in for both cubes (`super::probes`), but the car's paint seen from outside by day reflects
-        // the surroundings cube (`paint_mirrored` in `shader.wgsl`), and at a full-size reflection resolution from the cockpit too (the
-        // bonnet, the cabin's finishes).
+        // the surroundings cube (`paint_mirrored` in `shader.wgsl`), and at a full-size reflection resolution from the
+        // cockpit too (the bonnet, the cabin's finishes).
         let paint =
             (self.outside_view || self.enhance.reflection_scale == ReflectionScale::Full) && self.day_light().is_some();
         let Some((low, high)) = self.car_bounds().filter(|_| !self.probes.baked || paint) else {
@@ -191,6 +191,8 @@ impl Renderer {
         };
         let eye = (low + high) * 0.5;
         let s = &self.surroundings;
+        // One face every `reflection_rate` frames, a full refresh every six times as many (ours: the cube feeds blurred
+        // light and far reflections, which change slowly).
         let every = self.enhance.reflection_rate.every();
         let surroundings = surroundings_due(s.skipped.get(), s.at.get(), eye, every);
         s.skipped.set(if surroundings == 0 { s.skipped.get() + 1 } else { 0 });
@@ -262,9 +264,6 @@ pub(super) fn face_views(eye: Vec3, face: u32) -> (Mat4, Mat4) {
     (projection * view::look_to_mat4(eye, direction, up), projection * view::look_to_mat4(Vec3::ZERO, direction, up))
 }
 
-/// The surroundings cube draws one face every [`Enhance::reflection_rate`] frames, a full refresh every six times as
-/// many (ours: it feeds blurred light and far reflections, which change slowly; every frame, the paint mirrors it
-/// sharply).
 /// How far the cube's centre may move from where the surroundings cube last drew a face before it draws all six
 /// again, metres (ours): a seek, a teleport or a cut to another car, never driving between two faces.
 const SURROUNDINGS_SNAP: f32 = 50.0;
@@ -352,9 +351,8 @@ const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 
 impl ScreenReflection {
     /// `shader` with the stage draws' vertex entry point ([`vertex_entry`](super::pipelines::vertex_entry)) and the
-    /// fragment entry point (`fs_reflect` in `ssr.wgsl`), `rays` a pixel and
-    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `full`: the reflection resolution is
-    /// 100 % ([`Trace::of`]).
+    /// fragment entry point (`fs_reflect` in `ssr.wgsl`), `rays` a pixel and the pyramid's cells a ray visits
+    /// ([`Reflections::rays`](super::Reflections::rays)). `full`: the reflection resolution is 100 % ([`Trace::of`]).
     pub(super) fn new(
         device: &wgpu::Device,
         (shader, vertex, fragment, [rays, steps]): (&wgpu::ShaderModule, &str, &str, [u32; 2]),
@@ -695,8 +693,8 @@ impl ScreenReflection {
     }
 }
 
-/// The frame's height up to which a reflection resolution of 100 % traces the reflections at the frame's size, pixels (ours); above
-/// it the split trace. Wet 127 chase at 3840x2160, RX 9060 XT: the full-size trace 3.9 ms (2026-11-05).
+/// The frame's height up to which a reflection resolution of 100 % traces the reflections at the frame's size, pixels
+/// (ours); above it the split trace. Wet 127 chase at 3840x2160, RX 9060 XT: the full-size trace 3.9 ms (2026-11-05).
 const FULL_HEIGHT: u32 = 1440;
 
 /// How the reflections are traced.

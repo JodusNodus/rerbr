@@ -94,10 +94,10 @@ pub struct Args {
     pub upscale: Option<PathBuf>,
     /// `--cache DIR`: what the load works out and keeps between loads ([`rbr_render::foliage::use_cache`]).
     pub cache: Option<PathBuf>,
-    /// `--enhance`: renderer additions beyond the game's look; `--mirrors` the cockpit's mirrors; `--reflection-rate` and `--reflection-res` how often the dynamic
-    /// reflections update and at what resolution (by `--detail` when not given: high every 3rd frame at 50 %, ultra every
-    /// frame at 100 %); `--anti-aliasing` the
-    /// frame's anti-aliasing; `--reflections` the screen-space reflections; `--detail` the additions' detail.
+    /// `--enhance`: renderer additions beyond the game's look; `--mirrors` the cockpit's mirrors; `--reflection-rate`
+    /// and `--reflection-res` how often the dynamic reflections update and at what resolution (by `--detail` when not
+    /// given: high every 3rd frame at 50 %, ultra every frame at 100 %); `--anti-aliasing` the frame's anti-aliasing;
+    /// `--reflections` the screen-space reflections; `--detail` the additions' detail.
     pub enhance: Enhance,
     /// `--clock HH:MM`: the sun, its light and the ambient at that local solar time on the stage's rally
     /// (`relight::daylight`); the stage at night (`Atmosphere::night`) once the sun is 6 degrees down. Without it the

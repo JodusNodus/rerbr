@@ -520,10 +520,10 @@ const STEP: u32 = 32;
 /// drawn as on this one and magnified (at 4K two thirds of its pixels' side, the passes being mostly fill).
 pub const DENSEST: u32 = 1440;
 
-/// The view of the glass `placed`, from the main view `view_projection` (and its camera-anchored
-/// `sky_view_projection`) drawn at `screen` pixels, its image at `resolution` times the screen's density (the
-/// reflection resolution, [`ReflectionScale::fraction`](crate::renderer::ReflectionScale::fraction)): `None` when the glass is behind the eye, turned away, or off
-/// screen.
+/// The view of the glass `placed`, from the main view `view_projection` (and its camera-anchored `sky_view_projection`)
+/// drawn at `screen` pixels, its image at `resolution` times the screen's density (the reflection resolution,
+/// [`ReflectionScale::fraction`](crate::renderer::ReflectionScale::fraction)): `None` when the glass is behind the eye,
+/// turned away, or off screen.
 pub fn view(
     view_projection: Mat4,
     sky_view_projection: Mat4,

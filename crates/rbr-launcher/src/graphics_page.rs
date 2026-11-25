@@ -16,8 +16,8 @@ use crate::settings_page::{label_cell, row_tip};
 use crate::Form;
 
 /// The Quality section's choices: the renderer's additions (`viewer --enhance`), the wet roads (`--enhance wet` and
-/// `--reflections`), the detail (`--detail`), the mirrors (`--mirrors`) and how often and how sharp the reflections update (`--reflection-rate`,
-/// `--reflection-res`). Each is kept under its own key.
+/// `--reflections`), the detail (`--detail`), the mirrors (`--mirrors`) and how often and how sharp the reflections
+/// update (`--reflection-rate`, `--reflection-res`). Each is kept under its own key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Graphics {
     pub lighting: bool,

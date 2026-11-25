@@ -156,8 +156,8 @@ impl Renderer {
     }
 
     /// The windscreen's pane seen from inside this frame, its mean plane facing the eye (none: no pass). Drawn as the
-    /// centre mirror's is, the cabin and the stage behind it, at the reflection rate (at most every 2nd frame); only with
-    /// [`Enhance::windscreen`](super::Enhance::windscreen).
+    /// centre mirror's is, the cabin and the stage behind it, at the reflection rate (at most every 2nd frame); only
+    /// with [`Enhance::windscreen`](super::Enhance::windscreen).
     pub(crate) fn set_windscreen_mirror(&mut self, placed: Option<Placed>) {
         let mirrors = &mut self.mirrors;
         if !mirrors.windscreen_on {
