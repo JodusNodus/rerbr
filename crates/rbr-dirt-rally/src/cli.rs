@@ -94,6 +94,16 @@ fn developer(command: &str, mut args: impl Iterator<Item = String>) -> Result<()
             }
             let calls = crate::route::calls(&route)?;
             let placed = crate::pacenotes::place(&calls, &line.points, &line.at, start);
+            let all = crate::pacenotes::notes(&calls, &line.points, &line.at, start, finish);
+            let count = |t: u32| all.iter().filter(|n| n.tag == t).count();
+            eprintln!(
+                "{} notes: {} corners, {} crests, {} jumps, {} distance keys",
+                all.len(),
+                placed.len(),
+                count(16),
+                count(20),
+                count(13)
+            );
             println!("call\tdr_m\tsubcalls(type/angle/mA/mB/link)\ttag\tnote_m\tcorner(start-end m, turn, radius)");
             for (i, call) in calls.iter().enumerate() {
                 let subs: Vec<String> = call
