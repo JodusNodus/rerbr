@@ -67,7 +67,6 @@ mod sky_occlusion;
 mod skylight;
 pub mod soft_lock;
 pub mod sound;
-mod spec_poc;
 pub mod stage;
 pub mod stage_lamps;
 mod stage_lamps_pass;

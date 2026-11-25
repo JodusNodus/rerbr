@@ -451,12 +451,10 @@ fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, pixel: f32) -> vec3<f32
     var around = mirrored_light(mirrored, daylight);
     if (frame.reflection.x != 0.0) {
         around = ungraded(surrounding(mirrored, mix(2.0, 0.5, film.puddle), v.world));
-        // POC: the probes hold the stage (its trees and banks already) but no car: the share of the sky the car over
-        // the point hides (Lagarde's specular occlusion) takes the reflection of the open sky off under the car.
-        if (SPEC_OCC) {
-            let seen = 1.0 - frame.ground.x * car_contact(v.world);
-            around = around * specular_occlusion(seen, max(dot(film.normal, view), 1e-3), mix(2.0, 0.5, film.puddle) / 7.0);
-        }
+        // The probes hold the stage (its trees and banks already) but no car: the share of the sky the car over the
+        // point hides (Lagarde's specular occlusion) takes the reflection of the open sky off under the car.
+        let seen = 1.0 - frame.ground.x * car_contact(v.world);
+        around = around * specular_occlusion(seen, max(dot(film.normal, view), 1e-3), mix(2.0, 0.5, film.puddle) / 7.0);
     }
     var shine = glint(mirrored);
     var mirror = mix(soaked, around, film.reflectance);

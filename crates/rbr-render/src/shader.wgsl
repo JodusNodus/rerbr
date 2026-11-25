@@ -291,11 +291,6 @@ override SUN_MASK: bool = false;
 // How many levels finer the surroundings cube is than the 128-texel cube the levels below are counted in (1 at
 // `Detail::Ultra`, 256 texels).
 override CUBE_SHIFT: f32 = 0.0;
-// POC (`spec_poc.rs`, env `RERBR_SPEC_OCC`, `RERBR_SPEC_ENERGY`; off by default, not in `all`): Lagarde's specular
-// occlusion on the car's reflections and the wet road under the car; multiple-scattering energy compensation on the
-// car's GGX environment reflection.
-override SPEC_OCC: bool = false;
-override SPEC_ENERGY: bool = false;
 var<private> pixel: vec2<i32>;
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -1409,10 +1404,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             }
         } else if (exterior_finish()) {
             // A finish's reflection in place of the class's and of the clear coat (`finish.wgsl`).
-            var open = visible;
-            if (SPEC_OCC) {
-                open = specular_occlusion(visible, nv, mix(FINISH_BLUR.x, FINISH_BLUR.y, mode.finish[1].w) / 7.0);
-            }
+            let open = specular_occlusion(visible, nv, mix(FINISH_BLUR.x, FINISH_BLUR.y, mode.finish[1].w) / 7.0);
             shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, open, shaded));
             shine = vec3<f32>(0.0);
         }
@@ -1423,9 +1415,6 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             let roughness = COAT_ROUGHNESS * (1.0 - film * (1.0 - WET_ROUGHNESS));
             var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0 && !exterior_finish()) * alpha * clean
                 * select(1.0, cockpit_coat, inside);
-            if (SPEC_ENERGY) {
-                coat = min(coat * energy_gain(0.04, nv, roughness), 1.0);
-            }
             if (lit_class() == 1u && car_look()) {
                 coat = min(coat * COAT_STRENGTH, 1.0);
             }
@@ -1443,18 +1432,13 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
                 coat = min(max(coat, glass) + chrome * (1.0 - glass), 1.0);
             }
             if (metal > 0.0 && !exterior_finish()) {
-                var rim = RIM_METAL * metal * clean;
-                if (SPEC_ENERGY) {
-                    rim = min(rim * energy_gain(RIM_METAL, nv, RIM_ROUGHNESS), 1.0);
-                }
+                let rim = RIM_METAL * metal * clean;
                 let shine = paint_mirrored(reflect(-view, nr), RIM_ROUGHNESS);
                 mirrored = mix(mirrored, vec3<f32>(dot(shine, vec3<f32>(0.333))), rim / max(rim + coat, 1e-4));
                 coat = max(coat, rim);
             }
-            var mirror_seen = visible;
-            if (SPEC_OCC) {
-                mirror_seen = specular_occlusion(visible, nv, roughness);
-            }
+            // Lagarde's specular occlusion from the body's occlusion: a sharp lobe cut harder than a rough one.
+            let mirror_seen = specular_occlusion(visible, nv, roughness);
             colour = pow(pow(shaded, vec3<f32>(2.2)) * (1.0 - coat) + pow(mirrored, vec3<f32>(2.2)) * coat * sky_dim * mirror_seen, vec3<f32>(1.0 / 2.2));
         }
     }
@@ -2353,22 +2337,10 @@ const DAMP_ROUGHNESS: f32 = 0.15;
 // How much of its surroundings a dielectric (F0 0.04) of `roughness` reflects at `nv`: Karis's fit of the split-sum
 // environment BRDF, at most 1.
 fn environment_reflectance(nv: f32, roughness: f32) -> f32 {
-    let ab = environment_dfg(nv, roughness);
-    return min(0.04 * ab.x + ab.y, 1.0);
-}
-
-// Karis's fit of the split-sum environment BRDF: the scale on F0 and the bias, `(A, B)`.
-fn environment_dfg(nv: f32, roughness: f32) -> vec2<f32> {
     let r = roughness * vec4<f32>(-1.0, -0.0275, -0.572, 0.022) + vec4<f32>(1.0, 0.0425, 1.04, -0.04);
     let a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
-    return vec2<f32>(-1.04, 1.04) * a004 + r.zw;
-}
-
-// Multiple-scattering compensation for a GGX lobe (Kulla and Conty 2017, Fdez-Aguera 2019's form for the environment):
-// the energy the single-scattering split-sum loses, `1 - (A + B)`, returned to F0 as `1 + F0 (1 / (A + B) - 1)`.
-fn energy_gain(f0: f32, nv: f32, roughness: f32) -> f32 {
-    let ab = environment_dfg(nv, roughness);
-    return 1.0 + f0 * (1.0 / max(ab.x + ab.y, 0.05) - 1.0);
+    let ab = vec2<f32>(-1.04, 1.04) * a004 + r.zw;
+    return min(0.04 * ab.x + ab.y, 1.0);
 }
 
 // Lagarde's specular occlusion (Moving Frostbite to PBR, 2014): how much of the reflection an ambient visibility `ao`
