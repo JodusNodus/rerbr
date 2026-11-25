@@ -255,9 +255,12 @@ pub struct Call {
     pub subcalls: Vec<Subcall>,
 }
 
-/// The route's calls, sorted by distance.
+/// The route's calls, sorted by distance; none where the route has no codriver file (Pikes Peak).
 pub fn calls(route: &Route) -> Result<Vec<Call>, String> {
     let file = format!("{}_codriver_1_pro_{}_data.xml", route.area, route.index);
+    if !route.dir.join(&file).is_file() {
+        return Ok(Vec::new());
+    }
     parse_calls(&read(route, &file)?)
 }
 
