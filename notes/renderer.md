@@ -1225,6 +1225,8 @@ not ported.
   byte-identical.
 - Side windows (ours): each side window its own glass (drops, trails, film, mud; no wipers, no bugs), drawn on its
   exterior pane; 0.3 of the windscreen's rain and 0.1 of its spray, landing low.
+- The window draws the particles before the glass (2026-11-25, `draw::car_lens` works out the camera first), as the
+  screenshots and the video export do: the glass took the last frame's spray.
 - The pane itself from inside (ours, 2026-10-30, with `windscreen`; kind 6, `pane` in `glass.wgsl`): a cell per film
   cell, drawn over the water (its inner face is nearer the eye; under it, drops hid the cabin's reflection): Schlick
   loss through both faces, a patchy dust film scattering the sun (forward and broad
@@ -1374,6 +1376,9 @@ gathers it along each pixel's blur vector into the post pass's scene. The veloci
 each but the centre weighted by its own vector's length over the centre's, so the car and the cabin stay sharp and
 bleed nothing. The frame's time step is worked out on its first view, so a triple screen's side views blur as the
 centre does. Cost (Gabiria chase): 0.09 ms at 1080p, 0.38 ms at 4K. Off byte-identical (chase, cockpit RMSE 0).
+Each view binds its own TAA's uniform (2026-11-25, `MotionBlur::bind` in `switch_view`): bound once, the triple
+screen's other views blurred by the first view's `view_to_prev` (621 chase, triple: the centre smeared sideways, RMSE
+0.041 against fixed; first frame and single-view shots byte-identical).
 
 Grass levels (2026-11-21, user decision, `grass::Level`, `frame.grass`): the halving falloff (full to 50 m, half every
 25 m, gone by 110 m) read as a front of grass moving with the car (user). The density became the level's share near
