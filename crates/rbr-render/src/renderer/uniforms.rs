@@ -509,7 +509,7 @@ crate::shader_check::wgsl_layout!(
     the_mode_keeps_the_shaders_layout, crate::renderer::SHADER, "Mode",
     ModeUniform {
         second_texture, alpha_test, alpha_ref, mip_bias, cutout, lit, water, specular, light, fresnel, glow,
-        grime, detail, lamp, bank, bump, highlight, tint, sheen, layer, layer_scale, layer_offset, finish
+        grime, detail, lamp, bank, bump, highlight, tint, sheen, layer, layer_scale, layer_offset
     }
 );
 
