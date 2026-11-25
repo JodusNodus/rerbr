@@ -16,6 +16,7 @@
 //! The tables are drawn again only when their inputs change ([`SkyLight::update`]).
 
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util;
 use bytemuck::{bytes_of, Pod, Zeroable};
 use glam::Vec3;
 use std::cell::Cell;
@@ -305,12 +306,7 @@ impl SkyLight {
         let aerial = texture("sky aerial", (AERIAL_SIZE, AERIAL_SIZE), AERIAL_SIZE, wgpu::TextureDimension::D3, 1);
         let cube = texture("sky cube", (CUBE_SIZE, CUBE_SIZE), 6, d2, CUBE_LEVELS);
         let view = |t: &wgpu::Texture| t.create_view(&Default::default());
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("sky"),
-            size: std::mem::size_of::<SkyUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform = gpu_util::uniform_buffer(device, "sky", size_of::<SkyUniform>());
         // Nine harmonics, the scale, the sunlight, the nine of the sky alone, the white balance and the day's light
         // (`SkyLight` in `skylight.wgsl`).
         let light = device.create_buffer(&wgpu::BufferDescriptor {
@@ -325,16 +321,8 @@ impl SkyLight {
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("sky tables"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("sky tables"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let sampler = gpu_util::linear_clamp(device, "sky tables");
+        let shader = gpu_util::shader(device, "sky tables", SHADER);
         let views = [&transmittance, &multiscatter, &sky_view].map(view);
         let aerial_view = view(&aerial);
         let shown_view = view(&shown);
