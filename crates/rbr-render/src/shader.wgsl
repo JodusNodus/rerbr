@@ -642,8 +642,8 @@ fn vertex(input: VertexIn) -> VertexOut {
     // not the car's): the same few points for every vertex, so not per pixel.
     if (lit_class() == 1u && v.specular.y >= CABIN_INTERIOR && in_car()) {
         out.bounce_sun = cabin_shade(cabin_seen(out));
-        // With the bounce baked per vertex (`CABIN_LOCAL_BOUNCE`): the sky's in `bounce_sky`, the sun's toward it in `sky.x`.
-        if (CABIN_LOCAL_BOUNCE) {
+        // The cabin's bounce baked per vertex (`cabin_bounce`): the sky's in `bounce_sky`, the sun's toward it in `sky.x`.
+        if (CABIN) {
             let bounce = cabin_bounce(input);
             out.bounce_sky = bounce.rgb;
             out.sky = vec3<f32>(bounce.a, 0.0, v.occlusion);

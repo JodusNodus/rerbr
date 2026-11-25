@@ -29,8 +29,7 @@ pub(crate) struct Post {
     up: wgpu::RenderPipeline,
     /// The exposure for the chain's levels (their glare's aperture).
     glare: wgpu::BindGroup,
-    /// The composite, then the in-car view's, with the cabin's exposure (`CABIN` in `post.wgsl`).
-    composite: [wgpu::RenderPipeline; 2],
+    composite: wgpu::RenderPipeline,
     /// Bins the scene's light (`cs_histogram`), then meters the bins into [`Post::exposure`] (`cs_meter`).
     meter: [wgpu::ComputePipeline; 2],
     /// The exposure the composite applies, kept from frame to frame.
@@ -74,10 +73,10 @@ struct Targets {
 }
 
 /// The metering's grid, in `cs_histogram`'s workgroups (`METER_GRID` in `post.wgsl` over 16), and its bins, the
-/// outside's then the cabin's (`ZONE_BINS`), then the ground's points and their sunlit share (`METER_SLOTS`).
+/// `BINS`, then the ground's points and their sunlit share (`METER_SLOTS`).
 const METER_GROUPS: (u32, u32) = (8, 4);
-const ZONE_BINS: u64 = 256;
-const METER_SLOTS: u64 = ZONE_BINS + 2;
+const BINS: u64 = 128;
+const METER_SLOTS: u64 = BINS + 2;
 
 /// `cs_meter`'s and `fs_composite`'s settings (`Meter` in `post.wgsl`).
 #[repr(C)]
@@ -297,18 +296,14 @@ impl Post {
             &[],
         );
         let nodes = grade.filter(|nodes| nodes.len() == GRADE_BYTES);
-        let composite = [0.0, 1.0].map(|cabin| {
-            let hdr = f64::from(u8::from(format == crate::present::HDR_FORMAT));
-            let constants = [
-                ("SHAFTS", f64::from(u8::from(shafts))),
-                ("CABIN", cabin),
-                ("CABIN_SHARE", cabin_share()),
-                ("DEBUG_VIEW", f64::from(debug_view)),
-                ("HDR", hdr),
-                ("GRADE", f64::from(u8::from(nodes.is_some()))),
-            ];
-            pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
-        });
+        let hdr = f64::from(u8::from(format == crate::present::HDR_FORMAT));
+        let constants = [
+            ("SHAFTS", f64::from(u8::from(shafts))),
+            ("DEBUG_VIEW", f64::from(debug_view)),
+            ("HDR", hdr),
+            ("GRADE", f64::from(u8::from(nodes.is_some()))),
+        ];
+        let composite = pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants);
         let meter = ["cs_histogram", "cs_meter"].map(|entry| {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
@@ -483,7 +478,7 @@ impl Post {
         for index in (1..t.levels.len()).rev() {
             pass(encoder, &t.levels[index - 1], wgpu::LoadOp::Load, &self.up, &[&t.sources[index + 1]]);
         }
-        let composite = &self.composite[usize::from(cabin_depth > 0.0)];
+        let composite = &self.composite;
         let Some([x, y, width, height]) = viewport else {
             pass(encoder, target, clear, composite, &[&t.sources[0], &t.composite]);
             return;
@@ -504,16 +499,6 @@ impl Post {
         pass.set_bind_group(1, &t.composite, &[]);
         pass.draw(0..3, 0..1);
     }
-}
-
-/// The share of the gap between the cabin's exposure and the outside's the cabin is lifted by (`CABIN_SHARE` in
-/// `post.wgsl`): `RERBR_CABIN_SHARE` (experiment), else 1 as before.
-fn cabin_share() -> f64 {
-    std::env::var("RERBR_CABIN_SHARE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|s: &f64| (0.0..=1.0).contains(s))
-        .unwrap_or(1.0)
 }
 
 /// The frame and the bloom levels for `size`, and their bind groups; the light shafts' map with `shafts`.

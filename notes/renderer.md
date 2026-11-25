@@ -1757,21 +1757,24 @@ sky's share through two clear faces, `(1 - F)^2` over the cosine-weighed hemisph
 former 0.85 was this); the sun's from the blended panes facing it, weighed by area toward it, per measured direction
 (`SunIn::through`; 208 at 19:30 about 0.8). Left heuristic: `CABIN_SHADE`, `CABIN_GAUGE_LEAST`.
 
-Cabin bounce per vertex (experiment, 2026-11-25, `car::cabin_bounce`, `RERBR_CABIN_BOUNCE=1`, off by default; frames
-without it byte-identical): each vertex's 64 rays (`Grid::sky_hits`) note the cabin face they meet on its front (a back
-hit, a door's outer skin from inside, gives nothing: counted, it lit the DiRT Escort's cabin with the skins' outside
-light); three bounces of the faces' albedo times their sky share, and of their sun as `c0 + c1 . d` over 64 directions
-past the car, give each vertex its sky bounce (rgb, `bounce[1]`) and its sun bounce (`sky_dir`, `bounce[0]`, turned with
-the car), scaled to the measured mean sun (`SunIn::bounce_scale`: the two bands smear the window-only sun over all
-directions). In place of the room's bounce, `CABIN_WINDOW_LIGHT`, `CABIN_BOUNCE_SHARE` and the vertex near occlusion
-(`cabin_irradiance`). The sky bounce alone lands where the room's did (DiRT cme, Gabiria 3600 m 09:00, shade 37.5 of 255
-against 37.0), the sun's lifts the cabin by a sunlit floor (shade 44.5, sun patch over shade 2.35 to 1.84; stock
-Escort 4.08 to 3.12). Under the cabin's own exposure the bounce takes the cabin further from DiRT screenshots (15:00,
-lower third: Fiesta 53 to 61 against DiRT's 34, Escort RS 43 to 54 against 31); with one exposure (`CABIN_STOPS` 0, a
-trial build) 38 and 32, near DiRT's, where one exposure without it crushed the Fiesta's dash (32, its detail gone).
-The M3's shot (57) has the sunroof and the notes in it. Open: one exposure is the user's call.
+Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin_bounce`): each vertex's 64 rays
+(`Grid::sky_hits`) note the cabin face they meet on its front (a back hit, a door's outer skin from inside, gives
+nothing: counted, it lit the DiRT Escort's cabin with the skins' outside light); three bounces of the faces' albedo
+times their sky share, and of their sun as `c0 + c1 . d` over 64 directions past the car, give each vertex its sky
+bounce (rgb, `bounce[1]`) and its sun bounce (`sky_dir`, `bounce[0]`, turned with the car), scaled to the measured mean
+sun (`SunIn::bounce_scale`: the two bands smear the window-only sun over all directions). In place of the closed
+room's bounce, `CABIN_WINDOW_LIGHT`, `CABIN_BOUNCE_SHARE` and the vertex near occlusion (`cabin_irradiance`; the
+occlusion is left for `--debug-view` 2). The in-car view takes the outside's exposure (the cabin at 1/5 of its meter,
+`IN_CAR_WEIGHT`): the cabin's own exposure, its taper and its composite pipeline are gone. Against DiRT screenshots
+(Gabiria 15:00, lower third): Fiesta 38 against DiRT's 34, Escort RS 32 against 31 (were 53 and 43); one exposure
+without the bounce crushed the Fiesta's dash (32, its detail gone). 14 cockpit scenes (day, golden, overcast, fog,
+rain, snow, night; stock and DiRT cars), lower third: day 621 DiRT Fiesta 64 to 39, golden 532 Clio 54 to 41, fog Alpes
+GC8 56 to 45, snow Peklo DiRT Escort 42 to 28, rain unchanged (the cabin metered no darker), nights within 2 levels.
+Tried and dropped (user): the cabin lifted by 0.5 or 0.7 of its metered gap to the outside (Far Cry 5's GI-based local
+exposure, McAuley 2018). Open: the DiRT Impreza's digital display, not a needle's face and so without
+`CABIN_GAUGE_LEAST`, reads dark under its hood.
 
-Exposure in the cockpit (user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
+Exposure in the cockpit (until 2026-11-25, now one exposure, above; user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the
 eye adapts to the dash when it looks there. The outside's meter counts the cabin at 1/5 (`IN_CAR_WEIGHT`): at 1/2 the
 dark cabin held the outside 1.5 to 2 stops over (Escort road 168 of 255; metered alone 91). The cabin takes its own

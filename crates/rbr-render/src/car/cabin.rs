@@ -246,20 +246,16 @@ pub fn bake(
         .iter()
         .flat_map(|m| m.vertices.iter().map(|v| (Vec3::from(v.position), Vec3::from(v.normal))))
         .collect();
-    let normals = if cabin_bounce::enabled() { cabin_bounce::normals(interior) } else { Vec::new() };
+    let normals = cabin_bounce::normals(interior);
     let baked = in_parallel(&points, |&(p, n)| grid.sky_hits(p, n, &normals));
     let skies: Vec<(f32, Vec3)> = baked.iter().map(|&(sky, seen, ..)| (sky, seen)).collect();
     let nears: Vec<f32> = baked.iter().map(|&(_, _, near, _)| near).collect();
     let hits: Vec<Vec<u32>> = baked.into_iter().map(|(.., hits)| hits).collect();
     let mut nears = nears.into_iter();
     let panes: Vec<(Vec3, f32)> = interior.iter().chain(exterior).flat_map(panes).collect();
-    let mut sun_in = SunIn::measure(&grid, interior, &skies, &panes, textures);
-    let bounced = cabin_bounce::enabled().then(|| {
-        let (bounced, fitted) = cabin_bounce::bake(&grid, interior, &skies, &hits, textures);
-        sun_in.fitted = Some(fitted);
-        bounced
-    });
-    let mut bounced = bounced.into_iter().flatten();
+    let (bounced, fitted) = cabin_bounce::bake(&grid, interior, &skies, &hits, textures);
+    let sun_in = SunIn::measure(&grid, interior, &skies, &panes, fitted);
+    let mut bounced = bounced.into_iter();
     let mirrors: Vec<Option<Mirror>> = (0..interior.len()).map(|k| damage.get(k).and_then(|d| d.mirror)).collect();
     let glass_parts = mirrors.contains(&Some(Mirror::Glass));
     let mut skies = skies.into_iter();
@@ -307,24 +303,19 @@ pub fn bake(
 /// sun reaches it past the car's opaque faces, measured at load for [`SUN_DIRECTIONS`] directions over the sphere from
 /// [`SUN_FACES`] of the faces, with the share of the sun the glass lets through from each (its panes weighed by their
 /// area toward the sun, [`pane_through`]; 1 with no glass that way, an open cockpit); the share of the sky each sees
-/// and where it sees it ([`Grid::sky`]); and their linear albedo per channel, the texel at the face's middle times its
-/// vertex colour as `shader.wgsl` shades it. The light that comes in lights the rest of the cabin back off its faces
-/// (`cabin.wgsl`): the roof lining over a sunlit dash or seat, the footwells. The interior set holds the body seen
-/// through the glass too, which takes in light the cabin does not: counted, it took the Clio Rally3's sky share from
-/// 0.055 to 0.361, the bounce 1.5 to 2.7 stops too bright; the BMW M3 E30's green livery, half of its area, turned
-/// the bounce teal.
+/// and where it sees it ([`Grid::sky`]). The interior set holds the body seen through the glass too, which takes in
+/// light the cabin does not: counted, it took the Clio Rally3's sky share from 0.055 to 0.361.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SunIn {
     directions: Vec<Vec3>,
     lit: Vec<f32>,
     through: Vec<f32>,
-    /// The mean sky share, the mean of where the faces see it (model space) and the mean albedo.
+    /// The mean sky share and the mean of where the faces see it (model space).
     pub sky: f32,
     pub seen: Vec3,
-    pub albedo: Vec3,
-    /// With the bounce baked per vertex ([`cabin_bounce`]): the faces' mean sun as the bake fitted it, by which the
-    /// vertices' sun bounce is scaled to the measured mean ([`SunIn::bounce_scale`]).
-    pub fitted: Option<cabin_bounce::Linear>,
+    /// The faces' mean sun as the bounce's bake fitted it ([`cabin_bounce`]), by which the vertices' sun bounce is
+    /// scaled to the measured mean ([`SunIn::bounce_scale`]).
+    fitted: cabin_bounce::Linear,
 }
 
 /// The most [`SunIn::bounce_scale`] gives.
@@ -387,21 +378,10 @@ impl<'a> Albedos<'a> {
 }
 
 impl SunIn {
-    /// The cabin's light bounced back off its faces against the light that comes in, per channel: the
-    /// interreflection of a closed room of mean albedo `a`, `a / (1 - a)` (a tan cabin's light is warm).
-    pub fn bounce(&self) -> Vec3 {
-        self.albedo / (Vec3::ONE - self.albedo).max(Vec3::splat(0.1))
-    }
-
-    /// The faces' mean sky share, where they see it and their albedo ([`SunIn`]), `skies` per vertex of `interior` in
-    /// order ([`Grid::sky`]).
-    fn incoming(
-        interior: &[Mesh],
-        skies: &[(f32, Vec3)],
-        textures: &BTreeMap<TextureRef, StageTexture>,
-    ) -> (f32, Vec3, Vec3) {
-        let mut albedos = Albedos::new(textures);
-        let (mut area, mut sky, mut seen, mut albedo) = (0.0, 0.0, Vec3::ZERO, Vec3::ZERO);
+    /// The faces' mean sky share and where they see it ([`SunIn`]), `skies` per vertex of `interior` in order
+    /// ([`Grid::sky`]).
+    fn incoming(interior: &[Mesh], skies: &[(f32, Vec3)]) -> (f32, Vec3) {
+        let (mut area, mut sky, mut seen) = (0.0, 0.0, Vec3::ZERO);
         let mut first = 0;
         for mesh in interior {
             for draw in mesh.draws.iter().filter(|draw| opaque(draw)) {
@@ -410,22 +390,20 @@ impl SunIn {
                     let v = t.map(|i| &mesh.vertices[i as usize]);
                     let [a, b, c] = v.map(|v| Vec3::from(v.position));
                     let size = 0.5 * (b - a).cross(c - a).length();
-                    let linear = albedos.of(draw, v);
                     let [sa, sb, sc] = t.map(|i| skies[first + i as usize]);
                     let share = (sa.0 + sb.0 + sc.0) / 3.0;
                     let size = size * inside(share);
                     area += size;
                     sky += size * share;
                     seen += size * (sa.1 + sb.1 + sc.1) / 3.0;
-                    albedo += size * linear;
                 }
             }
             first += mesh.vertices.len();
         }
         if area <= 0.0 {
-            return (0.0, Vec3::ZERO, Vec3::ZERO);
+            return (0.0, Vec3::ZERO);
         }
-        (sky / area, seen / area, albedo / area)
+        (sky / area, seen / area)
     }
 
     fn measure(
@@ -433,9 +411,9 @@ impl SunIn {
         interior: &[Mesh],
         skies: &[(f32, Vec3)],
         panes: &[(Vec3, f32)],
-        textures: &BTreeMap<TextureRef, StageTexture>,
+        fitted: cabin_bounce::Linear,
     ) -> SunIn {
-        let (sky, seen, albedo) = SunIn::incoming(interior, skies, textures);
+        let (sky, seen) = SunIn::incoming(interior, skies);
         // The faces inside the cabin by area ([`inside`]): the body seen through the glass takes in light the cabin does
         // not.
         let mut faces: Vec<(Vec3, Vec3, f32)> = Vec::new();
@@ -489,7 +467,7 @@ impl SunIn {
                 }
             })
             .collect();
-        SunIn { directions, lit, through, sky, seen, albedo, fitted: None }
+        SunIn { directions, lit, through, sky, seen, fitted }
     }
 
     /// The cabin's mean sun with the sun toward `to_sun` (model space): the measured directions near it, weighed.
@@ -500,10 +478,9 @@ impl SunIn {
     /// The baked sun bounce's scale with the sun toward `to_sun` (model space): the faces' measured mean sun over the
     /// fit's ([`SunIn::fitted`]). The fit's two bands smear the sun that gets in only through the windows over every
     /// direction, so where the roof shades it the fit is too high; the measured mean keeps the cabin's total and the fit
-    /// says where it lands. At most [`BOUNCE_SCALE_MOST`]; 0 without a fit.
+    /// says where it lands. At most [`BOUNCE_SCALE_MOST`].
     pub fn bounce_scale(&self, to_sun: Vec3) -> f32 {
-        self.fitted
-            .map_or(0.0, |fit| (self.at(to_sun) / fit.at(to_sun.normalize_or_zero()).max(1e-4)).min(BOUNCE_SCALE_MOST))
+        (self.at(to_sun) / self.fitted.at(to_sun.normalize_or_zero()).max(1e-4)).min(BOUNCE_SCALE_MOST)
     }
 
     /// The share of the sun toward `to_sun` (model space) the glass lets in.
@@ -561,12 +538,7 @@ pub fn turned(vertex: &Vertex, matrix: Mat4) -> Vertex {
     if vertex.specular[1] < INTERIOR {
         return *vertex;
     }
-    let turned = with_seen(*vertex, matrix.transform_vector3(seen(vertex)));
-    if cabin_bounce::enabled() {
-        cabin_bounce::turned(turned, matrix)
-    } else {
-        turned
-    }
+    cabin_bounce::turned(with_seen(*vertex, matrix.transform_vector3(seen(vertex))), matrix)
 }
 
 /// The fraction of `specular[1]` that holds [`seen`]'s z: `SEEN_Z[0] + SEEN_Z[1] * z`, inside (0, 1) so that the whole
@@ -807,15 +779,10 @@ mod tests {
             .map(|v| grid.sky(Vec3::from(v.position), Vec3::from(v.normal)))
             .map(|(sky, seen, _)| (sky, seen))
             .collect();
-        let sun_in = SunIn::measure(&grid, &[mesh], &skies, &[], &BTreeMap::new());
-        // Seen out the open side only, and grey 128 untextured: (128 / 255)^2.2 linear.
+        let sun_in = SunIn::measure(&grid, &[mesh], &skies, &[], Default::default());
+        // Seen out the open side only.
         assert!(sun_in.sky > 0.05 && sun_in.sky < 0.6, "{}", sun_in.sky);
         assert!(sun_in.seen.x > 0.0, "{}", sun_in.seen);
-        assert!(
-            (sun_in.albedo - Vec3::splat((128.0f32 / 255.0).powf(2.2))).abs().max_element() < 1e-3,
-            "{}",
-            sun_in.albedo
-        );
         let low_side = sun_in.at(Vec3::new(1.0, 0.4, 0.0));
         assert!(low_side > 0.05, "{low_side}");
         for shut in [Vec3::Y, Vec3::new(-1.0, 0.4, 0.0), Vec3::NEG_Y] {

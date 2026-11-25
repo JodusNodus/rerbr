@@ -841,12 +841,7 @@ fn add_interior(
     let sun_in = exterior
         .and_then(|exterior| car::cabin::bake(&mut interior.meshes, &interior.damage, exterior, &interior.textures));
     if let Some(sun_in) = &sun_in {
-        eprintln!(
-            "cabin: mean sky share {:.3}, albedo {:.3}, bounce {:.3}",
-            sun_in.sky,
-            sun_in.albedo,
-            sun_in.bounce()
-        );
+        eprintln!("cabin: mean sky share {:.3}", sun_in.sky);
     }
     let bulkhead = glass::bulkhead(&interior.meshes, &interior.damage).filter(|_| windscreen);
     if let Some(bulkhead) = &bulkhead {

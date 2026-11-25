@@ -440,10 +440,6 @@ impl Context {
                         ("ALPHA_TEST", f64::from(u8::from(alpha_test))),
                         ("WATER_PLUS", f64::from(u8::from(self.water_plus))),
                         ("CABIN", f64::from(u8::from(self.cabin && key.lit != 0))),
-                        (
-                            "CABIN_LOCAL_BOUNCE",
-                            f64::from(u8::from(self.cabin && key.lit != 0 && crate::car::cabin_bounce::enabled())),
-                        ),
                         ("GRASS", f64::from(u8::from(self.grass))),
                         ("LIGHTING", f64::from(u8::from(self.lighting))),
                         ("DEBUG_VIEW", f64::from(self.debug_view)),

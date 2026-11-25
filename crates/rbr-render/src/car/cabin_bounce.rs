@@ -1,24 +1,17 @@
-//! The light the cabin's faces bounce onto each other, per vertex (experiment, ours: `RERBR_CABIN_BOUNCE=1`). In place
-//! of the closed room of one mean albedo (`SunIn::bounce`), which gave every face the same bounce, each vertex gathers
+//! The light the cabin's faces bounce onto each other, per vertex (ours, 2026-11-25). In place of a closed room of one
+//! mean albedo, `a / (1 - a)`, which gave every face the same bounce (until 2026-11-25), each vertex gathers
 //! what its own rays meet ([`super::Grid::sky_hits`]): the faces' light times their albedo, over [`BOUNCES`] bounces.
 //! Two terms, per unit of the light that comes in through the glass: the sky's (each face lit by the share of the sky
 //! it sees, as the window light lights it) and the sun's, which depends on where the sun is, as a linear function of
 //! its direction in the car's model space ([`Linear`], fitted per face over [`SUN_DIRECTIONS`] directions past the
 //! car's opaque faces). The sun's bounce is grey, coloured by the sky bounce's hue (the same faces give both back).
-//! `cabin.wgsl` reads them (`CABIN_LOCAL_BOUNCE`) in place of the room's bounce.
+//! `cabin.wgsl` reads them (`cabin_bounce`, `cabin_irradiance`).
 
 use super::cabin::{inside, opaque, Albedos, Grid, LIFT, RAYS};
 use crate::parallel::in_parallel;
 use crate::stage::{Mesh, StageTexture, TextureRef, Vertex};
 use glam::{Mat4, Vec3};
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
-
-/// Whether the cabin's bounce is baked per vertex (`RERBR_CABIN_BOUNCE` set and not `0`).
-pub fn enabled() -> bool {
-    static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("RERBR_CABIN_BOUNCE").is_some_and(|v| v != "0"))
-}
 
 /// How many times the light goes round the cabin.
 const BOUNCES: usize = 3;
