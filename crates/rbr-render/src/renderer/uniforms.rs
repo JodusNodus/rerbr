@@ -58,8 +58,7 @@ pub(super) struct ModeUniform {
     /// `xy` a BTB material's light factors on the sky and bounce light and on the sun's ([`crate::stage::Light`]), `z` 1
     /// for a converted stage's grass ground ([`DrawState::grass`](crate::stage::DrawState::grass), `grass_warmed`).
     pub(super) tint: [f32; 4],
-    /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]); `yzw` a car interior material's
-    /// finish, its roughness (zero for none), metal and flock ([`crate::car::cabin::Finish`], `cabin_finish`).
+    /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
     pub(super) sheen: [f32; 4],
     /// `x` a multilayer material ([`crate::stage::Layers`]): 0 none, 1 details at the world position, 2 at the uv, 3 DiRT Rally's; `y` its
     /// `magicMult`; `z` 1 with DiRT Rally's road blend, `w` its `DetailBlendScale`.
@@ -67,6 +66,8 @@ pub(super) struct ModeUniform {
     /// The details' `(u, v)` multipliers and offsets: layers R and G, then B and A.
     pub(super) layer_scale: [[f32; 4]; 2],
     pub(super) layer_offset: [[f32; 4]; 2],
+    /// A converted car's interior material's finish ([`crate::car::cabin::finish_uniform`], `cabin_finish`).
+    pub(super) finish: [[f32; 4]; 4],
 }
 
 /// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach

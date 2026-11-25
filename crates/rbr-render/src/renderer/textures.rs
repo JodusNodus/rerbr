@@ -299,10 +299,8 @@ pub(super) fn bind_group(
         ],
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
         tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), f32::from(u8::from(key.grass)), 0.0],
-        sheen: {
-            let finish = key.shade.and_then(|s| s.finish).map_or([0.0; 3], |f| [f.roughness, f.metal, f.flock]);
-            [key.sheen.map_or(0.0, |s| s.roughness), finish[0], finish[1], finish[2]]
-        },
+        sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
+        finish: crate::car::cabin::finish_uniform(key.shade.as_ref().and_then(|s| s.finish.as_ref())),
         layer: key.layers.map_or([0.0; 4], |(l, _)| {
             [
                 if l.uv {

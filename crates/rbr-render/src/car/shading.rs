@@ -67,8 +67,10 @@ pub(super) fn draw_state(
         address: [if pass == Pass::Crack { Address::Clamp } else { Address::Wrap }; 2],
         second_texture: scrape.is_some(),
         alpha_ref: (blend && pass != Pass::Crack).then_some(0),
-        // `CShaderCarBase::Load` sets the diffuse sampler's bias for every class with a diffuse bitmap.
-        mip_bias: texture.is_some(),
+        // `CShaderCarBase::Load` sets the diffuse sampler's bias for every class with a diffuse bitmap. Ours: not on a
+        // converted car's faces with a normal map, whose textures are made for the plain filter (DiRT Rally's 2048 to
+        // 4096 atlases, a carbon weave repeated 300 to 500 times): 8 times finer than the pixel they alias.
+        mip_bias: texture.is_some() && normal.is_none(),
         ground: false,
         grass: None,
         cull_back: !matches!(pass, Pass::Plastic | Pass::InteriorGlass | Pass::TwoSided),

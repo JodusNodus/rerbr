@@ -82,10 +82,58 @@ pub fn friendly_path<'a>(shaders: &'a [Section], name: &str) -> Option<&'a str> 
         .map(|(_, path)| path)
 }
 
-/// A material's finish, or `None`: ours, the material section's `Finish` (`chrome`, `metal`, `painted`, `gloss`, `carbon`,
-/// `leather`, `matt`, `suede`), which a converted car's interior materials carry (`rbr-dirt-rally`); no retail car has it.
-pub fn finish<'a>(shaders: &'a [Section], material: &str) -> Option<&'a str> {
-    section(shaders, material)?.get("Finish")
+/// How an interior material's faces reflect (ours, a converted DiRT Rally car's: `rbr-dirt-rally` writes its shaders'
+/// constants as the material section's `Finish*` keys; no retail car has them).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Finish {
+    pub kind: FinishKind,
+    /// `FinishFresnel`: the reflection's strength over the specular texel, `min` facing the eye to `max` at grazing,
+    /// along `(1 - n.v)^power`.
+    pub fresnel: [f32; 3],
+    /// `FinishEnvironment`: the reflection's colour and its blur (0 sharp, 1 soft); `None` for a material that reflects
+    /// nothing.
+    pub environment: Option<[f32; 4]>,
+    /// `FinishPhong`: the sun's highlight, `pow(R.L, power)` times `scale` and the colour.
+    pub phong: [f32; 5],
+    /// `FinishNoise`: a flock's fibres' noise, its size over the uv.
+    pub noise: f32,
+    /// `FinishCarbon`: a carbon weave's fibre highlight, its strength, power and falloff power.
+    pub carbon: [f32; 3],
+}
+
+/// What shader a [`Finish`] stands for: DiRT Rally's `interior.fx`, `interior_flock.fx` (suede), `interior_carbon.fx`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FinishKind {
+    Plain,
+    Flock,
+    Carbon,
+}
+
+/// A material's [`Finish`], or `None` without a known `Finish` key. Keys missing or short take the converter's defaults
+/// (Fresnel 0 1 1, Phong 10 1 1 1 1, noise 10, carbon 0 1 1).
+pub fn finish(shaders: &[Section], material: &str) -> Option<Finish> {
+    let section = section(shaders, material)?;
+    let kind = match section.get("Finish")?.trim().to_ascii_lowercase().as_str() {
+        "plain" => FinishKind::Plain,
+        "flock" => FinishKind::Flock,
+        "carbon" => FinishKind::Carbon,
+        _ => return None,
+    };
+    let numbers = |key: &str| -> Option<Vec<f32>> {
+        section.get(key).map(|v| v.split_whitespace().filter_map(|n| n.parse().ok()).collect())
+    };
+    fn filled<const N: usize>(values: Option<Vec<f32>>, default: [f32; N]) -> [f32; N] {
+        let values = values.unwrap_or_default();
+        std::array::from_fn(|i| values.get(i).copied().unwrap_or(default[i]))
+    }
+    Some(Finish {
+        kind,
+        fresnel: filled(numbers("FinishFresnel"), [0.0, 1.0, 1.0]),
+        environment: numbers("FinishEnvironment").map(|v| filled(Some(v), [1.0, 1.0, 1.0, 0.0])),
+        phong: filled(numbers("FinishPhong"), [10.0, 1.0, 1.0, 1.0, 1.0]),
+        noise: filled(numbers("FinishNoise"), [10.0])[0],
+        carbon: filled(numbers("FinishCarbon"), [0.0, 1.0, 1.0]),
+    })
 }
 
 /// Whether a material has an opacity channel (`OpacityChannel = true`). The glass classes are alpha
@@ -185,10 +233,20 @@ mod tests {
     }
 
     #[test]
-    fn a_finish_is_the_materials_own_key() {
-        let shaders = sections(&SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = chrome\r\n"));
-        assert_eq!(finish(&shaders, "external::tire"), Some("chrome"));
+    fn a_finish_is_the_materials_finish_keys() {
+        let keys = "[external::tire]\r\nFinish = flock\r\nFinishFresnel = 0 1 2.5\r\nFinishEnvironment = 1 1 1 1\r\n\
+            FinishPhong = 15 1 1 0.5 1\r\nFinishNoise = 10\r\n";
+        let shaders = sections(&SHADERS.replace("[external::tire]\r\n", keys));
+        let f = finish(&shaders, "external::tire").unwrap();
+        assert_eq!(
+            (f.kind, f.fresnel, f.environment),
+            (FinishKind::Flock, [0.0, 1.0, 2.5], Some([1.0, 1.0, 1.0, 1.0]))
+        );
+        assert_eq!((f.phong, f.noise, f.carbon), ([15.0, 1.0, 1.0, 0.5, 1.0], 10.0, [0.0, 1.0, 1.0]));
         assert_eq!(finish(&shaders, "external::carpaint"), None);
+        // No environment key: the material reflects nothing.
+        let plain = sections(&SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = plain\r\n"));
+        assert_eq!(finish(&plain, "external::tire").map(|f| f.environment), Some(None));
     }
 
     #[test]

@@ -27,6 +27,7 @@ use crate::damage::MeshDamage;
 use crate::parallel::in_parallel;
 use crate::stage::{Draw, Image, Mesh, Stage, StageTexture, TextureRef, TextureSet, Vertex};
 use glam::{IVec3, Mat4, Vec2, Vec3};
+use rbr_formats::car_parts::{Finish, FinishKind};
 use rbr_formats::rbrhud::{self, Atlas, Kind};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -298,38 +299,24 @@ pub fn bake(
     Some(sun_in)
 }
 
-/// An interior material's finish (ours, a converted car's `Finish`, `rbr_formats::car_parts::finish`): how its faces
-/// reflect in the cabin (`cabin_finish` in `cabin.wgsl`), where every other face is one low-gloss plastic
-/// (`CABIN_ROUGHNESS`). Hand set per class (DiRT Rally's own constants, `FresnelMin` and `FresnelMax`, `PhongPower`, are
-/// not decoded): the chrome a sharp mirror, the bare metal a satin one, the painted cage, glossy plastic and the carbon's
-/// lacquer smooth dielectrics, the leather and matt plastic rough ones, the suede a flock with no reflection.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Finish {
-    /// The roughness of its reflection and of the sun's highlight.
-    pub roughness: f32,
-    /// 1 for a metal: it mirrors by its specular (the texture's alpha) at every angle.
-    pub metal: f32,
-    /// 1 for a flock (suede): no reflection, a sheen at grazing angles.
-    pub flock: f32,
-}
-
-impl Finish {
-    /// The finish named `name`, or `None` for one not known.
-    pub fn named(name: &str) -> Option<Finish> {
-        let (roughness, metal, flock) = match name.to_ascii_lowercase().as_str() {
-            "chrome" => (0.08, 1.0, 0.0),
-            // Half a metal: DiRT's bare metal reflects 0.2 to 0.3 (`FresnelMin`, `FresnelMax`), a satin steel.
-            "metal" => (0.4, 0.5, 0.0),
-            "painted" => (0.3, 0.0, 0.0),
-            "gloss" => (0.25, 0.0, 0.0),
-            "carbon" => (0.15, 0.0, 0.0),
-            "leather" => (0.55, 0.0, 0.0),
-            "matt" => (0.8, 0.0, 0.0),
-            "suede" => (1.0, 0.0, 1.0),
-            _ => return None,
-        };
-        Some(Finish { roughness, metal, flock })
-    }
+/// A converted car's interior material's finish (`rbr_formats::car_parts::Finish`, DiRT Rally's interior shaders'
+/// constants) as `cabin_finish` in `cabin.wgsl` reads it (`mode.finish`): `[kind (1 plain, 2 flock, 3 carbon), Fresnel
+/// min, max, power]`, `[environment rgb, blur (-1: no reflection)]`, `[Phong power, Phong colour times its scale]`,
+/// `[carbon strength, power, falloff power, flock noise size]`; zero for a face with none.
+pub fn finish_uniform(finish: Option<&Finish>) -> [[f32; 4]; 4] {
+    let Some(f) = finish else { return [[0.0; 4]; 4] };
+    let kind = match f.kind {
+        FinishKind::Plain => 1.0,
+        FinishKind::Flock => 2.0,
+        FinishKind::Carbon => 3.0,
+    };
+    let [power, scale, r, g, b] = f.phong;
+    [
+        [kind, f.fresnel[0], f.fresnel[1], f.fresnel[2]],
+        f.environment.unwrap_or([0.0, 0.0, 0.0, -1.0]),
+        [power, scale * r, scale * g, scale * b],
+        [f.carbon[0], f.carbon[1], f.carbon[2], f.noise],
+    ]
 }
 
 /// How light gets into the cabin (ours), means over the interior set's opaque faces by area, each weighed by how far it
@@ -654,6 +641,25 @@ mod tests {
     use super::*;
     use crate::stage::{Address, Anchor, DrawState, Layer, Lod};
     use bytemuck::Zeroable;
+
+    #[test]
+    fn a_finish_packs_as_the_shader_reads_it() {
+        let finish = Finish {
+            kind: FinishKind::Flock,
+            fresnel: [0.0, 1.0, 2.5],
+            environment: None,
+            phong: [15.0, 2.0, 1.0, 0.5, 0.25],
+            noise: 10.0,
+            carbon: [1.0, 20.0, 3.0],
+        };
+        let packed = finish_uniform(Some(&finish));
+        assert_eq!(packed[0], [2.0, 0.0, 1.0, 2.5]);
+        // No environment: no reflection.
+        assert_eq!(packed[1][3], -1.0);
+        assert_eq!(packed[2], [15.0, 2.0, 1.0, 0.5]);
+        assert_eq!(packed[3], [1.0, 20.0, 3.0, 10.0]);
+        assert_eq!(finish_uniform(None), [[0.0; 4]; 4]);
+    }
 
     /// One opaque draw of `triangles`, each vertex with `normal`.
     fn opaque_mesh(triangles: &[[Vec3; 3]], normal: Vec3) -> Mesh {

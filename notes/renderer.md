@@ -1784,18 +1784,26 @@ sensor dims it. Day frames at 13:00 to golden hour: the DiRT Impreza's bar graph
 screens a little brighter; the Escort's needle dials unchanged. Nights (Impreza, 306, i20, Clio, Escort) within 23 of
 255 of before, where the reflected light now adds.
 
-Cabin finishes (proof of concept, 2026-11-25, `cabin_finish`): a converted car's interior material may carry a `Finish`
-(ours, `car_parts::finish`; `rbr-dirt-rally` writes DiRT's material library as `chrome`, `metal`, `painted`, `gloss`,
-`carbon`, `leather`, `matt`, `suede`), which `car::cabin::Finish::named` gives a roughness, a metal share and a flock
-share (`mode.sheen.yzw`). Such a face mirrors what it sees of the outside (`cabin_open`) at its roughness, as a
-dielectric or a metal of F0 0.6, times its specular (texture alpha), blended over its lit texel in linear light; the
-sun's highlight takes the same roughness and Fresnel (`cabin_finish_highlight`, capped by the square of its sharpness
-over `CABIN_HIGHLIGHT`'s plastic); a flock (suede) none, its albedo up by 1.5 (1 - n.v)^3. Hand-set per class, DiRT's
-`FresnelMin`/`FresnelMax` and `PhongPower` not decoded; `metal` is half a metal (DiRT's bare metal reflects 0.2 to 0.3).
-Faces with no finish (every RSF car) are unchanged: the i20 WRC 2020 day frame identical to the pixel. Frames (Escort,
-Impreza, 306; day, golden, night): the Escort's Sparco spokes read as satin metal (22 to about 130 of 255 facing an
-overcast sky through the windscreen), its painted cage and the glossy dash top mirror the sky, the carbon a streak;
-the 306's and Impreza's changes small; nights within a few texels.
+Cabin finishes (2026-11-25, `cabin_finish`): a converted car's interior material may carry DiRT Rally's own shading
+constants (ours, `car_parts::finish`: `Finish` plain, flock or carbon, `FinishFresnel`, `FinishEnvironment`,
+`FinishPhong`, `FinishNoise`, `FinishCarbon`, written by `rbr-dirt-rally`; `car::cabin::finish_uniform`, `mode.finish`).
+They follow DiRT's DX11 interior shaders as disassembled (`share/data/shaderpack/dx11/shaderpack.pssg`, DXBC through
+libvkd3d-shader, names from the RDEF chunk): `interior.fx` reflects `spec * lerp(FresnelMin, FresnelMax, min((1 -
+n.v)^FresnelPower, 1)) * EnvironmentColour` of a cube (sharp or `_soft`) and adds the sun as `pow(sat(R.L), PhongPower)`
+at that strength times `PhongScale`, `PhongColour`, the shadow and occlusion squared, its diffuse sun halved;
+`interior_flock.fx` (suede) weighs both by a fuzz `(1 - (n.v)^0.8)^2 * noise(uv * NoiseSize) * (1 - sat(-n.y))` and
+lerps the colour toward white by the fuzz times the sun's diffuse; `interior_carbon.fx` adds a Kajiya-Kay fibre highlight
+along `TCarbonVectorMap` (red, blue) and a lacquer at `FresnelMin`. All three read `TOcclusionMap` on the second UVs. Ours:
+the reflection is what the face sees of the outside through the windows (`cabin_open`) at the material's strength,
+blended over the lit texel in linear light, sharp `CABIN_FINISH_BLUR.x` or soft `.y` cube levels, a soft one 70 % grey;
+the sun's Phong at `CABIN_PHONG` 2 (DiRT's diffuse sun is halved); the fuzz white at half the sun; the fibre direction from
+the bump slot in the uv's screen-space frame (`carbon_fibre`, never used as a normal). Converted faces with a normal map
+drop the game's -3 mip bias (`car::shading::draw_state`: 2048 to 4096 atlases and a weave repeated 300 to 500 times
+alias at it). Faces without a finish (every RSF car) are unchanged. Frames (Escort, Impreza, 306; day, golden, night),
+with the converter's occlusion now on its own layout: the Impreza's dash top lost its scrambled-AO pattern and reads a
+plain grey with the sky's sheen (DiRT's `Matt`, Fresnel 0.2 to 1 at grazing); the Escort's Sparco spokes are satin (bare
+metal 0.2 to 0.3), its painted cage and the carbon mirror the sky; the 306's dash and wheel are clean of blotches; by
+night the 306's metal spoke mirrors the headlit fog (it was black).
 
 Exposure in the cockpit (until 2026-11-25, now one exposure, above; user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the

@@ -171,6 +171,9 @@ struct Mode {
     // The details' (u, v) multipliers and offsets: layers R and G in the first vector, B and A in the second.
     layer_scale: array<vec4<f32>, 2>,
     layer_offset: array<vec4<f32>, 2>,
+    // A converted car's interior material's finish (`car::cabin::finish_uniform`, `cabin_finish`): x of the first the
+    // kind, 0 for none.
+    finish: array<vec4<f32>, 4>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -1205,7 +1208,11 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // A converted car's normal map (`stage::Surface::normal`, ours) bends the normal the light and the reflections take; its
     // diffuse's alpha, where the draw is not blended, is then the specular strength (`gloss`).
     var gloss = 1.0;
-    if (bump_draw()) {
+    // A carbon finish's map in the normal slot is its weave's direction (`carbon_fibre`), not a normal map.
+    var fibre = vec3<f32>(0.0);
+    if (CABIN && cabin_carbon()) {
+        fibre = carbon_fibre(v, n);
+    } else if (bump_draw()) {
         n = bumped(v) * select(-1.0, 1.0, front);
         gloss = select(first.a, 1.0, mode.alpha_test != 0u);
     }
@@ -1321,7 +1328,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (DEBUG_VIEW != 0u) {
             return vec4<f32>(vec3<f32>(cabin_debug(v, n, shadowed, under_cloud, outside)), 1.0);
         }
-        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside, gloss);
+        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside, gloss, fibre);
     } else {
         shaded = lit(colour, n, view, sunlit, around.rgb, v.world, gloss);
     }

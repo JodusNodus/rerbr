@@ -146,23 +146,21 @@ const CABIN_NEAR_BOUNCE: f32 = 0.5;
 // grazing Fresnel lit the dash white, which had the highlight left out before.
 const CABIN_HIGHLIGHT: vec2<f32> = vec2<f32>(0.5, 0.035);
 
-fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>, gloss: f32) -> vec3<f32> {
+fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>, gloss: f32, fibre: vec3<f32>) -> vec3<f32> {
     let ndl = cabin_sun(v, n, shadowed, under_cloud, outside);
     let sun = frame.day_sun.rgb * frame.cabin_seen.w;
     var around = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside) - sun * ndl;
     around = mix(around, vec3<f32>(dot(around, vec3<f32>(0.2126, 0.7152, 0.0722))), CABIN_NEUTRAL);
     let gamma = select(CABIN_GAMMA, 2.2, v.specular.y >= CABIN_GAUGE);
     var albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
-    var sheen = 0.0;
+    var sheen = vec3<f32>(0.0);
     var inward = vec3<f32>(0.0);
     if (v.specular.y < CABIN_GAUGE) {
-        if (cabin_finished()) {
-            albedo = albedo * (1.0 + CABIN_FLOCK_RIM * mode.sheen.w * pow(1.0 - clamp(dot(n, view), 0.0, 1.0), 3.0));
-        }
         if (ndl > 0.0 && cabin_finished()) {
-            sheen = cabin_finish_highlight(n, view, gloss) * ndl;
+            // The sun past the shadows alone: the lobes take their own angles.
+            sheen = cabin_finish_sun(v, n, view, gloss, fibre) * ndl / max(dot(n, -frame.sun.xyz), 1e-4);
         } else if (ndl > 0.0) {
-            sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
+            sheen = vec3<f32>(min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl);
         }
         let kept = 1.0 - cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
         inward = (sqrt(albedo * albedo + CABIN_INWARD * CABIN_INWARD) - albedo) * kept;
@@ -365,38 +363,104 @@ fn cabin_shade(seen: vec3<f32>) -> vec3<f32> {
 const CABIN_ROUGHNESS: f32 = 0.8;
 const CABIN_SHEEN_LEVEL: f32 = 3.0;
 
-// An interior material's finish (ours, `car::cabin::Finish`, `mode.sheen.yzw`: roughness, metal, flock) in place of the
-// one plastic: what it mirrors of the outside through the windows (`cabin_open`) at its roughness (the cube's level as
-// `CABIN_SHEEN_LEVEL` is to `CABIN_ROUGHNESS`), as a dielectric (`environment_reflectance`) or a metal of
-// `CABIN_METAL_F0`, times its specular (`gloss`); a flock none. `a` the share of the face it covers: where the face
-// sees the cabin it keeps its texel.
-const CABIN_METAL_F0: f32 = 0.6;
-// A flock's sheen at grazing angles: its albedo up by this times (1 - n.v)^3.
-const CABIN_FLOCK_RIM: f32 = 1.5;
+// A converted car's interior material's finish (ours, `car::cabin::finish_uniform`, `mode.finish`): DiRT Rally's
+// interior shaders as their disassembly reads (`interior.fx`, `interior_flock.fx`, `interior_carbon.fx`, notes
+// `renderer.md`), in the cabin's own light. The reflection's strength is the specular texel (`gloss`) times the Fresnel
+// from `min` facing the eye to `max` at grazing along `(1 - n.v)^power`; a carbon's lacquer its `min` alone; a flock's
+// times its fuzz (`cabin_fuzz`). It mirrors what it sees of the outside through the windows (`cabin_open`), in the
+// material's colour, sharp (`CABIN_FINISH_BLUR.x` of the cube's levels) or soft (`.y`); where the face sees the cabin it
+// keeps its texel (DiRT's fixed cube of a cabin stands in for that). The sun's highlight is the Phong lobe
+// `pow(R.L, power)` at the same strength in the Phong colour, `CABIN_PHONG` of the sun as DiRT weighs it against the
+// diffuse (its sun light on the diffuse is halved), with a flock's fuzz lit white and a carbon's fibres' highlight.
+const CABIN_FINISH_BLUR: vec2<f32> = vec2<f32>(0.5, 3.5);
+const CABIN_PHONG: f32 = 2.0;
+// A flock's fibres (`interior_flock.fx`'s noise map, ours a value noise): cells per uv over its `NoiseSize`.
+const CABIN_FLOCK_CELLS: f32 = 256.0;
 
 fn cabin_finished() -> bool {
-    return mode.sheen.y > 0.0;
+    return mode.finish[0].x > 0.0;
 }
 
+fn cabin_carbon() -> bool {
+    return mode.finish[0].x > 2.5;
+}
+
+// A flock's fuzz (`interior_flock.fx`): its fibres seen edge on, `(1 - (n.v)^0.8)^2`, in its noise, less on the faces
+// turned down.
+fn cabin_fuzz(v: VertexOut, n: vec3<f32>, view: vec3<f32>) -> f32 {
+    if (mode.finish[0].x < 1.5 || mode.finish[0].x > 2.5) {
+        return 0.0;
+    }
+    let edge = 1.0 - min(pow(clamp(dot(n, view), 0.0, 1.0), 0.8), 1.0);
+    let noise = value_noise(vec3<f32>(v.uv0 * mode.finish[3].w * CABIN_FLOCK_CELLS, 0.0));
+    return edge * edge * noise * (1.0 - clamp(-n.y, 0.0, 1.0));
+}
+
+// The finish's reflection strength at `n`, `view`.
+fn cabin_finish_strength(v: VertexOut, n: vec3<f32>, view: vec3<f32>, gloss: f32) -> f32 {
+    let f = mode.finish[0];
+    if (cabin_carbon()) {
+        return f.y;
+    }
+    let grazing = min(pow(max(1.0 - dot(n, view), 0.0), f.w), 1.0);
+    let s = gloss * mix(f.y, f.z, grazing);
+    return select(s, s * cabin_fuzz(v, n, view), f.x > 1.5);
+}
+
+// What the finish mirrors of the outside and its share of the face (`a`).
 fn cabin_finish(v: VertexOut, n: vec3<f32>, view: vec3<f32>, gloss: f32) -> vec4<f32> {
-    let roughness = mode.sheen.y;
-    let nv = clamp(dot(n, view), 1e-3, 1.0);
-    let metal = CABIN_METAL_F0 + (1.0 - CABIN_METAL_F0) * pow(1.0 - nv, 5.0);
-    let reflectance = mix(environment_reflectance(nv, roughness), metal, mode.sheen.z) * gloss * (1.0 - mode.sheen.w);
+    let environment = mode.finish[1];
+    if (environment.w < 0.0) {
+        return vec4<f32>(0.0);
+    }
     let r = reflect(-view, n);
-    let seen = reflected(r, roughness * CABIN_SHEEN_LEVEL / CABIN_ROUGHNESS);
+    let seen = reflected(r, mix(CABIN_FINISH_BLUR.x, CABIN_FINISH_BLUR.y, environment.w));
     let grey = vec3<f32>(dot(seen, vec3<f32>(0.2126, 0.7152, 0.0722)));
-    let share = reflectance * cabin_open(cabin_seen(v), 1.0 - v.specular.z, r);
-    return vec4<f32>(mix(seen, grey, CABIN_NEUTRAL * roughness), clamp(share, 0.0, 1.0));
+    let share = cabin_finish_strength(v, n, view, gloss) * cabin_open(cabin_seen(v), 1.0 - v.specular.z, r);
+    return vec4<f32>(mix(seen, grey, CABIN_NEUTRAL * environment.w) * environment.rgb, clamp(share, 0.0, 1.0));
 }
 
-// The sun's highlight on a finish: the lobe at its roughness (at least 0.05), a metal's `CABIN_METAL_F0` over the
-// dielectric's 0.04, capped as `CABIN_HIGHLIGHT` is for the plastic, by the square of how much sharper it is.
-fn cabin_finish_highlight(n: vec3<f32>, view: vec3<f32>, gloss: f32) -> f32 {
-    let m = max(mode.sheen.y, 0.05);
-    let f = mix(1.0, CABIN_METAL_F0 / 0.04, mode.sheen.z) * gloss * (1.0 - mode.sheen.w);
-    let cap = CABIN_HIGHLIGHT.y * pow(CABIN_HIGHLIGHT.x / m, 2.0) * f;
-    return min(sun_lobe(n, view, -frame.sun.xyz, m) * f, cap);
+// The finish's light off the sun, per unit of the sun's light and of its share past the shadows (`lit`): the Phong
+// lobe, a flock's fuzz lit white (half the sun, as DiRT's diffuse takes it), a carbon's fibres along the weave's
+// direction `fibre` (Kajiya-Kay, `interior_carbon.fx`), on the side the sun lights.
+fn cabin_finish_sun(v: VertexOut, n: vec3<f32>, view: vec3<f32>, gloss: f32, fibre: vec3<f32>) -> vec3<f32> {
+    let to_sun = -frame.sun.xyz;
+    let nl = dot(n, to_sun);
+    if (nl <= 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let phong = mode.finish[2];
+    let lobe = pow(clamp(dot(reflect(-view, n), to_sun), 0.0, 1.0), phong.x);
+    let strength = select(cabin_finish_strength(v, n, view, gloss), 1.0, cabin_carbon());
+    var light = phong.yzw * lobe * strength * CABIN_PHONG;
+    light += vec3<f32>(0.5 * cabin_fuzz(v, n, view) * nl);
+    if (cabin_carbon() && dot(fibre, fibre) > 0.0) {
+        let carbon = mode.finish[3];
+        let tl = dot(fibre, to_sun);
+        let tv = dot(fibre, view);
+        let along = sqrt(max(1.0 - tl * tl, 0.0)) * sqrt(max(1.0 - tv * tv, 0.0)) - tl * tv;
+        let falloff = min(pow(clamp(dot(reflect(-view, n), to_sun), 0.0, 1.0), carbon.z), 1.0);
+        light += vec3<f32>(carbon.x * 0.5 * pow(max(along, 0.0), carbon.y) * nl * mix(1.0, falloff, 0.5));
+    }
+    return light;
+}
+
+// A carbon weave's fibre direction (`interior_carbon.fx`'s `TCarbonVectorMap`, in the normal map's slot: red and green
+// along u and v), in the world, across `n`; zero for none. Read as `bumped` reads a normal map, before any branch.
+fn carbon_fibre(v: VertexOut, n: vec3<f32>) -> vec3<f32> {
+    let uv = v.uv0 * mode.bump.zw;
+    let dir = textureSample(normal_texture, texture_sampler, uv).rg * 2.0 - 1.0;
+    let dp1 = dpdx(v.world);
+    let dp2 = dpdy(v.world);
+    let duv1 = dpdx(uv);
+    let duv2 = dpdy(uv);
+    let side2 = cross(dp2, n);
+    let side1 = cross(n, dp1);
+    let t = side2 * duv1.x + side1 * duv2.x;
+    let b = side2 * duv1.y + side1 * duv2.y;
+    let along = t * dir.x + b * dir.y;
+    let across = along - n * dot(along, n);
+    return select(vec3<f32>(0.0), normalize(across), dot(across, across) > 1e-20);
 }
 
 fn cabin_sheen(v: VertexOut, n: vec3<f32>, view: vec3<f32>) -> vec3<f32> {
