@@ -15,6 +15,7 @@ pub fn run(command: &str, mut args: impl Iterator<Item = String>) -> Result<(), 
             Ok(())
         }
         "pacenotes" => pacenotes(args),
+        "pacenotes-eval" => pacenotes_eval(),
         "pssg-tree" => {
             let path = args.next().ok_or("pssg-tree needs a .pssg")?;
             let depth: usize = args.next().map_or(Ok(3), |d| d.parse().map_err(|e| format!("depth: {e}")))?;
@@ -130,5 +131,107 @@ fn pacenotes(mut args: impl Iterator<Item = String>) -> Result<(), String> {
             );
         }
     }
+    Ok(())
+}
+
+/// One area's figures of `pacenotes-eval`.
+#[derive(Default)]
+struct Row {
+    notes: usize,
+    matched: usize,
+    own_side: usize,
+    flipped: usize,
+    close: usize,
+    /// |turn - angle| and the lead of the matched notes; the lead less the route's median of it less 3 s of speed.
+    off: Vec<f64>,
+    lead: Vec<f64>,
+    resid: Vec<f64>,
+}
+
+fn quantile(v: &mut [f64], q: f64) -> f64 {
+    v.sort_by(f64::total_cmp);
+    v.get(((v.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0.0)
+}
+
+impl Row {
+    fn show(&mut self, name: &str) {
+        let (n, m) = (self.notes as f64, self.matched.max(1) as f64);
+        let mut dev: Vec<f64> = self.resid.iter().map(|x| x.abs()).collect();
+        println!(
+            "{name}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}",
+            self.notes,
+            100.0 * self.matched as f64 / n,
+            100.0 * self.own_side as f64 / m,
+            100.0 * self.flipped as f64 / n,
+            quantile(&mut self.off, 0.5),
+            quantile(&mut self.off, 0.9),
+            self.close,
+            quantile(&mut self.lead, 0.25),
+            quantile(&mut self.lead, 0.5),
+            quantile(&mut self.lead, 0.75),
+            1.4826 * quantile(&mut dev, 0.5),
+        );
+    }
+}
+
+/// `pacenotes-eval`: how the calls place on every rally route's line, per area (routes without calls are skipped):
+/// notes, matched %, matched on the call's own side %, matched with every side flipped % (the control), median and p90
+/// |turn - angle|, notes closer than 15 m, quartiles of the lead (corner start less call), spread of the lead about
+/// 3 s of line speed plus a route offset.
+fn pacenotes_eval() -> Result<(), String> {
+    use std::collections::{BTreeMap, HashSet};
+    let install = crate::cli::install(None)?;
+    let mut areas: BTreeMap<String, Row> = BTreeMap::new();
+    for route in install.routes().into_iter().filter(|r| r.is_rally()) {
+        let calls = crate::route::calls(&route)?;
+        if calls.is_empty() {
+            continue;
+        }
+        let course = crate::route::course(&route)?;
+        let (line, start, finish, _) = crate::import::centre_line(&route, &course)?;
+        let from = (start - 50.).max(0.);
+        let line = line.stretch(from, (finish + 40.).min(line.length()) - from, true, 2.5);
+        let start = start - from;
+        let place = |calls: &[crate::route::Call]| crate::pacenotes::place(calls, &line.points, &line.at, start);
+        let placed = place(&calls);
+        let row = areas.entry(format!("{}/{}", route.location, route.area)).or_default();
+        row.notes += placed.len();
+        row.close += placed.windows(2).filter(|w| w[1].note.distance - w[0].note.distance < 15.0).count();
+        let speed = crate::pacenotes::speeds(&line.points, &line.at);
+        let (mut seen, mut resid) = (HashSet::new(), Vec::new());
+        for p in &placed {
+            let Some(c) = p.corner else { continue };
+            row.matched += 1;
+            row.own_side += usize::from(c.left == p.tag_left);
+            row.off.push((c.turn - p.angle).abs());
+            let spoken = start + calls[p.call].distance;
+            row.lead.push(c.start - spoken);
+            if seen.insert(p.call) {
+                let i = line.at.partition_point(|a| *a < spoken).min(speed.len() - 1);
+                resid.push(c.start - spoken - 3.0 * speed[i]);
+            }
+        }
+        let middle = quantile(&mut resid, 0.5);
+        row.resid.extend(resid.iter().map(|x| x - middle));
+        let mut flipped = calls.clone();
+        flipped.iter_mut().flat_map(|c| &mut c.subcalls).for_each(|s| s.kind = 3 - s.kind.min(2));
+        row.flipped += place(&flipped).iter().filter(|p| p.corner.is_some()).count();
+    }
+    println!(
+        "area\tnotes\tmatched%\tside%\tflipped%\tmedian|d|\tp90|d|\tclose<15m\tlead_q1\tlead_med\tlead_q3\tresid_mad"
+    );
+    let mut all = Row::default();
+    for (area, mut row) in areas {
+        row.show(&area);
+        all.notes += row.notes;
+        all.matched += row.matched;
+        all.own_side += row.own_side;
+        all.flipped += row.flipped;
+        all.close += row.close;
+        all.off.append(&mut row.off);
+        all.lead.append(&mut row.lead);
+        all.resid.append(&mut row.resid);
+    }
+    all.show("ALL");
     Ok(())
 }
