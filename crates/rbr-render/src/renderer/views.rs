@@ -1,10 +1,11 @@
-//! A frame of several views from one eye (ours: a triple screen's, `crate::triple`). Each view keeps what carries
-//! from frame to frame (the temporal anti-aliasing's history, the motion's last view, the clouds' march), parked while
-//! another is drawn; the frame's first view draws what they share (the sun's maps, the reflection cubes, the mirrors,
-//! the grass about the eye). Like-sized views share the rest of the targets: each view's commands are submitted before
-//! the next is drawn ([`Renderer::render_view`]).
+//! A frame of several views from one eye (ours: a triple screen's, `crate::triple`). Each view keeps what carries from
+//! frame to frame (the temporal anti-aliasing's history, the motion's last view, the clouds' march, the screen
+//! occlusion's history), parked while another is drawn; the frame's first view draws what they share (the sun's maps,
+//! the reflection cubes, the mirrors, the grass about the eye). Like-sized views share the rest of the targets: each
+//! view's commands are submitted before the next is drawn ([`Renderer::render_view`]).
 
 use super::cloud_volume::CloudHistory;
+use super::gtao::GtaoHistory;
 use super::Renderer;
 use glam::Mat4;
 
@@ -39,6 +40,7 @@ pub(super) struct Parked {
     taa: Option<crate::taa::Taa>,
     motion: Option<(Mat4, Mat4)>,
     clouds: Option<CloudHistory>,
+    gtao: Option<GtaoHistory>,
 }
 
 impl Renderer {
@@ -52,13 +54,14 @@ impl Renderer {
         }
         let incoming = match self.parked[index].take() {
             Some(parked) => parked,
-            None => Parked { taa: self.fresh_taa(), motion: None, clouds: None },
+            None => Parked { taa: self.fresh_taa(), motion: None, clouds: None, gtao: None },
         };
         let size = (&self.depth_view, self.depth_size);
         let outgoing = Parked {
             taa: std::mem::replace(&mut self.taa, incoming.taa),
             motion: self.motion.as_mut().and_then(|motion| motion.exchange(incoming.motion)),
             clouds: self.cloud_volume.exchange(&self.device, incoming.clouds, size),
+            gtao: self.sun_mask.exchange(&self.device, incoming.gtao),
         };
         self.parked[self.view] = Some(outgoing);
         self.view = index;
@@ -82,10 +85,13 @@ impl Renderer {
         self.parked.iter_mut().for_each(|parked| *parked = None);
     }
 
-    /// Starts every view's temporal anti-aliasing history again.
+    /// Starts every view's temporal anti-aliasing history again (and the screen occlusion's).
     pub(super) fn reset_parked(&mut self) {
         for taa in self.parked.iter_mut().flatten().filter_map(|parked| parked.taa.as_mut()) {
             taa.reset();
+        }
+        for gtao in self.parked.iter_mut().flatten().filter_map(|parked| parked.gtao.as_mut()) {
+            gtao.reset();
         }
     }
 }

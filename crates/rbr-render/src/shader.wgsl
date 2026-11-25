@@ -1353,8 +1353,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (day_lit() && !cabin_face && car_look()) {
         visible = body_occlusion(n, v.world);
         if (SUN_MASK) {
-            let contact = textureLoad(sun_contact, pixel / 2, 0).r;
-            visible = visible * contact * contact;
+            let contact = contact_at(pixel, v.world);
+            visible = combine_ao(visible, contact * contact);
         }
         body_visible = visible;
     }
@@ -1658,9 +1658,9 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
     // The contact shading on the sky's and the bounce's light, never the sun's (`contact_light`).
     var contact = 1.0;
     if (SUN_MASK) {
-        contact = textureLoad(sun_contact, pixel / 2, 0).r;
+        contact = contact_at(pixel, v.world);
     }
-    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * (ambient_occlusion * contact * (1.0 + through) * mode.tint.x) + sun * mode.tint.y) * occlusion);
+    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * (combine_ao(ambient_occlusion, contact) * (1.0 + through) * mode.tint.x) + sun * mode.tint.y) * occlusion);
 }
 
 // A grass tuft's or low bush's pixel (`foliage::with_plants`: `specular.y` 1, `wet` its share of height, `uv1` the way

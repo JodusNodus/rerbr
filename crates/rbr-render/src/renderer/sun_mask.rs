@@ -1,8 +1,9 @@
-//! The sun's shadow and the contact shading over the main view ([`Enhance::lighting`](super::Enhance::lighting); ours),
+//! The sun's shadow and the occlusion over the main view ([`Enhance::lighting`](super::Enhance::lighting); ours),
 //! worked out from the depth and the normals every opaque stage draw laid first (`fs_prepass`) and read back by those
 //! draws' shading (`SUN_MASK`): the sun's share per pixel (`fs_sun_mask`; the soft shadows' search and taps run once
-//! per pixel there, out of the stage's shader), and the contact shading per 2x2 pixels (`fs_contact`).
+//! per pixel there, out of the stage's shader), and the ground-truth occlusion per 2x2 pixels ([`Gtao`]).
 
+use super::gtao::{self, Gtao, GtaoHistory};
 use super::pipelines::{texture_entry, TEXTURE};
 use super::{depth_binding, Context};
 use crate::gpu_util;
@@ -15,7 +16,7 @@ pub(super) const NORMALS: wgpu::TextureFormat = wgpu::TextureFormat::Rgb10a2Unor
 const UP: wgpu::Color = wgpu::Color { r: 0.5, g: 1.0, b: 0.5, a: 1.0 };
 
 pub(super) struct SunMask {
-    /// The stage draws' group 2: the mask and the contact shading.
+    /// The stage draws' group 2: the mask and the screen's occlusion.
     layout: wgpu::BindGroupLayout,
     /// The passes' group 2: the normals and the depth, at `scene_colour`'s and `scene_depth`'s bindings.
     depth_layout: wgpu::BindGroupLayout,
@@ -24,11 +25,12 @@ pub(super) struct SunMask {
     targets: Targets,
     /// The sun's first cascade's depth range (`sun_ranges`), a texel standing in without the cascades.
     ranges: wgpu::TextureView,
+    /// The screen's occlusion, with the passes.
+    gtao: Option<Gtao>,
 }
 
 struct Passes {
     mask: wgpu::RenderPipeline,
-    contact: wgpu::RenderPipeline,
     /// Their empty group 1.
     empty: wgpu::BindGroup,
 }
@@ -36,11 +38,9 @@ struct Passes {
 /// What [`SunMask`] draws into at the frame's size, and the groups reading them.
 struct Targets {
     mask: wgpu::TextureView,
-    /// At half the size.
-    contact: wgpu::TextureView,
     /// The prepass's normals (the prepass's pipelines draw in [`NORMALS`]).
     normals: wgpu::TextureView,
-    /// The mask and the contact shading for the stage draws, and the normals and the depth for the passes.
+    /// The mask and the occlusion for the stage draws, and the normals and the depth for the passes.
     group: wgpu::BindGroup,
     depth: wgpu::BindGroup,
 }
@@ -54,8 +54,8 @@ impl SunMask {
         })
     }
 
-    /// The mask over a `depth` of `size` pixels, with the contact shading as the context says; its passes only with
-    /// the context's [`Context::lighting`] (else texels the draws never read).
+    /// The mask over a `depth` of `size` pixels, with the occlusion; its passes only with the context's
+    /// [`Context::lighting`] (else texels the draws never read).
     pub(super) fn new(
         context: &Context,
         (layout, frame_layout): (wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
@@ -98,16 +98,30 @@ impl SunMask {
                 )
             };
             let empty = gpu_util::bind_group(device, "sun mask", &empty, &[]);
-            Passes { mask: pipeline("fs_sun_mask"), contact: pipeline("fs_contact"), empty }
+            Passes { mask: pipeline("fs_sun_mask"), empty }
         });
         let size = if passes.is_some() { size } else { (1, 1) };
         let ranges = ranges.cloned().unwrap_or_else(|| no_ranges(device));
-        let targets = Targets::new(device, (&layout, &depth_layout), (depth, &ranges), size);
-        SunMask { layout, depth_layout, passes, targets, ranges }
+        let gtao = passes.is_some().then(|| Gtao::new(device, &context.shader, [frame_layout, &depth_layout], size));
+        let targets = Targets::new(device, (&layout, &depth_layout), (depth, &ranges), size, gtao.as_ref());
+        SunMask { layout, depth_layout, passes, targets, ranges, gtao }
     }
 
     pub(super) fn on(&self) -> bool {
         self.passes.is_some()
+    }
+
+    /// Puts `history` in place of the drawn view's screen occlusion history and gives the drawn view's back (a fresh
+    /// one when `None`); `None` without the passes.
+    pub(super) fn exchange(&mut self, device: &wgpu::Device, history: Option<GtaoHistory>) -> Option<GtaoHistory> {
+        Some(self.gtao.as_mut()?.exchange(device, history))
+    }
+
+    /// Starts the screen occlusion's history again with the next frame.
+    pub(super) fn reset_history(&self) {
+        if let Some(gtao) = &self.gtao {
+            gtao.reset();
+        }
     }
 
     /// The stage draws' group 2.
@@ -117,7 +131,16 @@ impl SunMask {
 
     pub(super) fn resize(&mut self, device: &wgpu::Device, depth: &wgpu::TextureView, size: (u32, u32)) {
         if self.on() {
-            self.targets = Targets::new(device, (&self.layout, &self.depth_layout), (depth, &self.ranges), size);
+            if let Some(gtao) = &mut self.gtao {
+                gtao.resize(device, size);
+            }
+            self.targets = Targets::new(
+                device,
+                (&self.layout, &self.depth_layout),
+                (depth, &self.ranges),
+                size,
+                self.gtao.as_ref(),
+            );
         }
     }
 
@@ -127,21 +150,26 @@ impl SunMask {
         wgpu::RenderPassColorAttachment { view: &self.targets.normals, depth_slice: None, resolve_target: None, ops }
     }
 
-    /// Works the mask and the contact shading out from the depth and normals the main view's prepass stored, with the
+    /// Works the mask and the occlusion out from the depth and normals the main view's prepass stored, with the
     /// world-anchored `frame`.
-    pub(super) fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame: &wgpu::BindGroup) {
-        let Some(passes) = &self.passes else { return };
-        for (pipeline, view) in [(&passes.mask, &self.targets.mask), (&passes.contact, &self.targets.contact)] {
-            let groups = [frame, &passes.empty, &self.targets.depth];
-            gpu_util::full_screen_pass(
-                encoder,
-                "sun mask",
-                view,
-                wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                pipeline,
-                &groups,
-            );
-        }
+    pub(super) fn draw(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
+        frame: &wgpu::BindGroup,
+        view_projection: glam::Mat4,
+    ) {
+        let (Some(passes), Some(gtao)) = (&self.passes, &self.gtao) else { return };
+        gtao.draw(encoder, queue, [frame, &self.targets.depth], view_projection);
+        let groups = [frame, &passes.empty, &self.targets.depth];
+        gpu_util::full_screen_pass(
+            encoder,
+            "sun mask",
+            &self.targets.mask,
+            wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+            &passes.mask,
+            &groups,
+        );
     }
 }
 
@@ -152,9 +180,13 @@ impl Targets {
         (layout, depth_layout): (&wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
         (depth, ranges): (&wgpu::TextureView, &wgpu::TextureView),
         (width, height): (u32, u32),
+        gtao: Option<&Gtao>,
     ) -> Targets {
         let mask = texture(device, FORMAT, (width, height));
-        let contact = texture(device, FORMAT, (width.div_ceil(2), height.div_ceil(2)));
+        let contact = match gtao {
+            Some(gtao) => gtao.contact().clone(),
+            None => texture(device, gtao::FORMAT, (1, 1)),
+        };
         let normals = texture(device, NORMALS, (width, height));
         let view = wgpu::BindingResource::TextureView;
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -174,7 +206,7 @@ impl Targets {
                 wgpu::BindGroupEntry { binding: 5, resource: view(ranges) },
             ],
         });
-        Targets { mask, contact, normals, group, depth }
+        Targets { mask, normals, group, depth }
     }
 }
 

@@ -28,6 +28,7 @@ mod depth_pyramid;
 mod enhance;
 mod frame;
 mod gpu;
+mod gtao;
 mod meshes;
 mod mirrors;
 mod motion;
@@ -492,6 +493,7 @@ impl Renderer {
         if let Some(taa) = &mut self.taa {
             taa.reset();
         }
+        self.sun_mask.reset_history();
         self.reset_parked();
     }
 
