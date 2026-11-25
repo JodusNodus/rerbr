@@ -406,6 +406,10 @@ const DIST_REACH: f64 = 3000.;
 /// A tree's far level, its billboard (4 triangles from the game's own 2-triangle far level), is drawn from the model's
 /// range to [`DIST_REACH`] for the trees within this far of the road, metres.
 const BILLBOARD_REACH: f64 = 1000.;
+/// A tree with a billboard draws its model no farther than this, metres, then the billboard (the renderer's band takes it
+/// half as far again, to 750 m). Nearer, the billboards read darker and denser than the models' thin needles in the haze
+/// (Turini 1 km, 340 m and 510 m swaps); at 750 m the frame matches (RMSE 1.1 against the full range, noise level).
+const TREE_REACH: f64 = 500.;
 /// The most triangles a stage writes (terrain, single props, far levels and each instanced model once) on the sample
 /// routes: the viewer holds every one in memory (the instances only their transforms).
 #[cfg(test)]
@@ -553,7 +557,6 @@ impl Placer<'_> {
         } else {
             f64::from(size * PROP_REACH).min(PROP_COST / (triangles.max(1) as f64).sqrt())
         };
-        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
         let (along, distance) = rbr_ac_tracks::assetto::ai::project(self.line, here);
         if meshes.is_empty() {
@@ -561,6 +564,10 @@ impl Placer<'_> {
         }
         let (road, forward) = self.line.sample(along);
         let sprite = source.types.sprites[at].as_ref();
+        // A tree with its billboard swaps to it at [`TREE_REACH`] at most.
+        let billboarded = sprite.is_some() && !tile && distance <= BILLBOARD_REACH;
+        let reach = if billboarded { reach.min(TREE_REACH) } else { reach };
+        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         // A tree's far level is a baked quad pair facing the road (4 triangles each: the model's own turn is the
         // placement's, the billboard's the road's), drawn from the model's range on; the tiles stay models, drawn from
         // 0, with their billboard past 8 m from the road.
