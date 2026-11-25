@@ -1858,9 +1858,10 @@ cars. Without `cabin_open`: its cone about the sky the bonnet sees left out the 
 horizon ahead, so the bonnet read flat (debug view: open share 1, cone 0 over most of the DiRT Impreza's bonnet). Not in
 the cockpit: rain on the paint (`wet_paint`), the body's occlusion. Night unchanged.
 
-Surroundings cube in the cockpit (2026-11-25, `update_reflection`): with `--reflections high` by day the car-centred
-cube is drawn in the cockpit too (one face every third frame, as outside; 0.10 ms by the October measure, not measured
-again), so the bonnet's coat and the cabin's finishes mirror what the outside view's paint does; below high the probes.
+Surroundings cube in the cockpit (2026-11-25, `update_reflection`): at `--detail ultra` (the launcher's "Sharper shadows
+and reflections") by day the car-centred cube is drawn in the cockpit too (as outside at ultra: 256 texels, a face a
+frame; not measured in the cockpit), so the bonnet's coat and the cabin's finishes mirror what the outside view's paint
+does; at high the probes. Not `--reflections`: the launcher offers it as the wet roads' setting.
 The 306 Maxi's black bonnet light rig (paint) at 621 by day reads glossy, mirroring the sky ahead; with the probes it
 mirrored the blurred trees.
 

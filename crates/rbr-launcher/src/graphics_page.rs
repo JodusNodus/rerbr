@@ -642,7 +642,8 @@ impl Form {
             .on_disabled_hover_text(tip);
 
             let tip = "For strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
-                       trunks) and sharper reflections in the car's paint and the wet roads. Needs Sky, sun and \
+                       trunks) and sharper reflections in the car's paint and the wet roads; in the cockpit the bonnet \
+                       and the cabin's chrome mirror the surroundings as the outside view does. Needs Sky, sun and \
                        shadows for the shadows. 15 to 40 % more frame time, and 0.5 GB more video memory on long \
                        stages";
             let mut sharp = g.detail == Detail::Ultra;
