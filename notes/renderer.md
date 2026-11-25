@@ -1875,7 +1875,12 @@ and `EnvironmentColour` is read by none. The converter's kinds `exterior` and `g
 texel, 2 times the reference it was written with) take the reflection in the outside view's light in place of the
 class's and of the clear coat, the sun's lobe at `EXTERIOR_PHONG` 0.2 (not calibrated); the paint keeps the clear coat.
 The interior's kinds stay in the cabin's light only: the outside's copy of the cabin (`e_internal`) has no cabin bake,
-and with the exterior path its pillars mirrored the sky. Seen: the Impreza's gold wheels mirror the sky in the spokes,
+and with the exterior path its pillars mirrored the sky. An RSF car's rim (`CarRim`, no finish of its own) takes DiRT's
+wheel (`car::shading::class_finish`: Fresnel 0.1 to 0.5, flake power 10, gain 2) with its specular from the texel's
+brightness over `WHEEL_LUMA`, `WHEEL_SPECULAR` 0.1 to 0.55 (DiRT's wheel maps: 0 to 0.25 dark, 0.5 to 0.6 bright on the
+Impreza, Escort, 306), in place of `RIM_METAL`'s grey mirror (0.55 at any angle), which the tyre's wall keeps. Seen: the
+Escort Cosworth's white rims a little less white face on, sharper; the GDA Impreza's gold spokes a sheen; i20 and Evo IX
+barely change (dark rims). The other classes take no finish: they say too little of what a part is made of. Seen: the Impreza's gold wheels mirror the sky in the spokes,
 the lamp pods stay dark; trim changes are small, as DiRT's own constants make them.
 
 Interior sheen (2026-10-31, `cabin_sheen`): every cabin face but paint open to the sky (the bonnet through the glass,

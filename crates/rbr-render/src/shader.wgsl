@@ -1215,6 +1215,11 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     } else if (bump_draw()) {
         n = bumped(v) * select(-1.0, 1.0, front);
         gloss = select(first.a, 1.0, mode.alpha_test != 0u);
+    } else if (exterior_finish()) {
+        // A class's finish (`car::shading::class_finish`: an RSF car's rim) on a texture with no specular: from its
+        // brightness, the rubber's to the metal's (`WHEEL_LUMA`).
+        let metal = smoothstep(WHEEL_LUMA.x, WHEEL_LUMA.y, dot(first.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)));
+        gloss = mix(WHEEL_SPECULAR.x, WHEEL_SPECULAR.y, metal);
     }
     // The car's shadow takes only the sun's term (and a crack's glint): faces turned from the sun skip it.
     var shadowed = 0.0;
@@ -1849,11 +1854,16 @@ const SPATTER_SPOTS: f32 = 0.35;
 // A wheel's texels by their luminance (ours, with the day's light): below the first the tyre's rubber, whose albedo is
 // `RUBBER_ALBEDO` of the texture's and whose spatter `RUBBER_SPATTER` of the rim's; above the second the rim's metal,
 // which mirrors the surroundings by `RIM_METAL` (a bright metal's reflectance, rough by `RIM_ROUGHNESS`) in the
-// cube's grey, between them the blend.
+// cube's grey, between them the blend. A rim (`CarRim`) reflects by its finish instead (`car::shading::class_finish`,
+// DiRT's wheel), the tyre's wall by this.
 const WHEEL_LUMA: vec2<f32> = vec2<f32>(0.3, 0.55);
 const RUBBER_ALBEDO: f32 = 0.6;
 const RUBBER_SPATTER: f32 = 0.5;
 const RIM_METAL: f32 = 0.55;
+// The specular of a wheel's rubber and of its metal as DiRT Rally's wheel maps hold it (the texture's alpha over its
+// brightness: the Impreza's, Escort's and 306's, 0.0 to 0.25 on the dark texels, 0.5 to 0.6 on the bright), for a
+// rim with no specular map (`car::shading::class_finish`).
+const WHEEL_SPECULAR: vec2<f32> = vec2<f32>(0.1, 0.55);
 // The tyre's dust band (ours): heights over the ground, metres, where the rubber's dirt falls from all to
 // `RUBBER_DIRT_HIGH` of it.
 const TYRE_BAND: vec2<f32> = vec2<f32>(0.08, 0.3);

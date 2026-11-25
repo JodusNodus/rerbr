@@ -1,6 +1,7 @@
 //! A face's look: its shader class's lighting constants, dirt and scrape textures, render state, pass and draw list.
 
 use crate::stage::{Address, DrawState, Light, NormalMap, Shade, Surface, TextureRef};
+use rbr_formats::car_parts::{Finish, FinishKind};
 use rbr_formats::ini::Section;
 
 /// The lighting constants of `class` in the car's clear-weather shader settings (the overcast file is not used), or
@@ -36,6 +37,22 @@ pub(super) fn dirt_texture(shader: &str) -> Option<&'static str> {
         "CarTire" => Some("TireDirt"),
         _ => None,
     }
+}
+
+/// The finish a car class takes where its material has none (ours): the rim (`CarRim`) DiRT Rally's wheel
+/// (`car_wheel.fx`, the constants of 105 of its 150 wheel materials: Fresnel 0.1 to 0.5, power 1, the cube untinted and
+/// sharp, the metallic flake's power 10), so an RSF car's wheels reflect as a converted DiRT car's; its specular from the
+/// texel's brightness (`WHEEL_SPECULAR` in `shader.wgsl`), at the gain DiRT's `sat(2 * spec)` takes.
+pub(super) fn class_finish(shader: &str) -> Option<Finish> {
+    (shader == "CarRim").then_some(Finish {
+        kind: FinishKind::Exterior,
+        fresnel: [0.1, 0.5, 1.0],
+        environment: Some([1.0, 1.0, 1.0, 0.0]),
+        phong: [10.0, 1.0, 1.0, 1.0, 1.0],
+        noise: 10.0,
+        carbon: [0.0, 1.0, 1.0],
+        specular: 2.0,
+    })
 }
 
 /// The friendly name of the scrape texture a car class blends in by the vertex's scrape amount: `Scrape` for
@@ -160,4 +177,19 @@ pub(super) struct FaceStyle {
     pub(super) shade: Option<Shade>,
     pub(super) pass: Pass,
     pub(super) order: Order,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_rim_class_takes_a_finish() {
+        let rim = class_finish("CarRim").unwrap();
+        assert_eq!((rim.kind, rim.fresnel, rim.specular), (FinishKind::Exterior, [0.1, 0.5, 1.0], 2.0));
+        assert!(rim.environment.is_some());
+        for class in ["CarPaint", "CarTexture", "CarTire", "CarPlastic", "CarGlass"] {
+            assert_eq!(class_finish(class), None);
+        }
+    }
 }
