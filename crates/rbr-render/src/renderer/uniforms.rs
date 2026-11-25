@@ -441,12 +441,7 @@ impl Renderer {
                 ],
                 sun_matrices: [cascades.matrices[0], cascades.matrices[1], cascades.matrices[2], cascades.far]
                     .map(|m| m.to_cols_array_2d()),
-                sun_shadow: [
-                    sun_strength,
-                    sun_step,
-                    f32::from(u8::from(overcast)),
-                    0.0,
-                ],
+                sun_shadow: [sun_strength, sun_step, f32::from(u8::from(overcast)), 0.0],
                 sun_texels: [cascades.texels[0], cascades.texels[1], cascades.texels[2], cascades.far_texel],
                 sun_splits: splits,
                 world_matrix: self.world.map_or(Mat4::IDENTITY, |(matrix, _)| matrix).to_cols_array_2d(),
