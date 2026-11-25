@@ -149,7 +149,7 @@ pub(crate) fn centre_line(route: &Route, course: &route::Course) -> Result<(Line
     };
     let at = |line: &Line, distance: f64| -> Result<f64, String> {
         let g = gate(distance).ok_or("course without gates")?;
-        let (s, off) = rbr_ac_tracks::assetto::ai::project(line, frame::world(g.crossing));
+        let (s, off) = rbr_btb_writer::road::project(line, frame::world(g.crossing));
         if off > GATE_OFF_ROAD {
             return Err(format!("the gate at {distance:.0} m lies {off:.1} m off the AI road"));
         }
@@ -184,7 +184,7 @@ fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), Str
         return Err(format!("the AI loop is {:.0} m, the lap {:.0} m", ring.length(), lap.length));
     }
     let on = |p: [f32; 3]| -> Result<f64, String> {
-        let (s, off) = rbr_ac_tracks::assetto::ai::project(&ring, frame::world(p));
+        let (s, off) = rbr_btb_writer::road::project(&ring, frame::world(p));
         if off > GATE_OFF_ROAD {
             return Err(format!("a lap marker lies {off:.1} m off the AI road"));
         }
@@ -558,7 +558,7 @@ impl Placer<'_> {
             f64::from(size * PROP_REACH).min(PROP_COST / (triangles.max(1) as f64).sqrt())
         };
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
-        let (along, distance) = rbr_ac_tracks::assetto::ai::project(self.line, here);
+        let (along, distance) = rbr_btb_writer::road::project(self.line, here);
         if meshes.is_empty() {
             return Ok(());
         }

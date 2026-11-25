@@ -671,7 +671,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         } else {
             (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)])
         };
-        let length = rbr_ac_tracks::assetto::ai::distance(a, b).max(1e-9);
+        let length = rbr_btb_writer::road::distance(a, b).max(1e-9);
         let t: [f64; 3] = std::array::from_fn(|k| (b[k] - a[k]) / length);
         let at = if input.circuit { line.at[i] } else { i as f64 * 2.5 };
         let _ = writeln!(

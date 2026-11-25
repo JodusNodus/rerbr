@@ -6,7 +6,7 @@ use rbr_btb_writer::{
     geometry::{Grid, Triangle},
     mesh::{self as xwrite, XMesh},
     pacenotes,
-    road::Line,
+    road::{self, Line},
     textures,
 };
 use kn5::{Matrix, IDENTITY};
@@ -284,7 +284,7 @@ impl Input {
             })?;
             let b = markers.get(&format!("{name}_R")).ok_or_else(|| format!("{MISSING_GATE} {name}_R"))?;
             let p = ai::world(std::array::from_fn(|i| (a[12 + i] + b[12 + i]) * 0.5));
-            let (s, error) = ai::project(&line, p);
+            let (s, error) = road::project(&line, p);
             if error > 15. {
                 return Err(format!("{name} is {error:.1} m off the AI line"));
             }
@@ -306,7 +306,7 @@ impl Input {
             let key = format!("AC_TIME_{i}");
             if let (Some(a), Some(b)) = (markers.get(&format!("{key}_L")), markers.get(&format!("{key}_R"))) {
                 // Older tracks keep zero-sized sector placeholders at the origin.
-                if ai::distance(ai::world([a[12], a[13], a[14]]), ai::world([b[12], b[13], b[14]])) < 0.5 {
+                if road::distance(ai::world([a[12], a[13], a[14]]), ai::world([b[12], b[13], b[14]])) < 0.5 {
                     continue;
                 }
                 match gate(&key) {
@@ -739,7 +739,7 @@ fn tile_bakes(
                             .iter()
                             .step_by(step)
                             .map(|p| {
-                                ai::project(line, [f64::from(p[0]) + origin[0], f64::from(p[2]) + origin[1], 0.]).1
+                                road::project(line, [f64::from(p[0]) + origin[0], f64::from(p[2]) + origin[1], 0.]).1
                             })
                             .collect();
                         let distance = distances.iter().sum::<f64>() / distances.len().max(1) as f64;
@@ -1046,7 +1046,7 @@ fn start_position(input: &Input, line: &Line, start: f64, ground: &Grid<'_>) -> 
     };
     if let Some(marker) = input.markers.get("AC_START_0") {
         let mut p = ai::world([marker[12], marker[13], marker[14]]);
-        let (s, error) = ai::project(line, p);
+        let (s, error) = road::project(line, p);
         let (road, tangent) = line.sample(s);
         p[2] = road[2];
         if error <= 5. && (2.0..=50.).contains(&behind(p)) {
@@ -1470,7 +1470,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         } else {
             (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)])
         };
-        let length = ai::distance(a, b).max(1e-9);
+        let length = road::distance(a, b).max(1e-9);
         let t = std::array::from_fn::<_, 3, _>(|k| (b[k] - a[k]) / length);
         let _ = writeln!(
             dl,
