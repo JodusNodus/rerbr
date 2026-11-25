@@ -5,6 +5,7 @@
 
 use super::pipelines::{texture_entry, TEXTURE};
 use super::{depth_binding, Context};
+use crate::gpu_util;
 use crate::sun::Quality;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -80,47 +81,23 @@ impl SunMask {
             ],
         });
         let passes = context.lighting.then(|| {
-            let empty = device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("sun mask"), entries: &[] });
-            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("sun mask"),
-                bind_group_layouts: &[Some(frame_layout), Some(&empty), Some(&depth_layout)],
-                immediate_size: 0,
-            });
+            let empty = gpu_util::layout(device, "sun mask", &[]);
+            let layouts = [frame_layout, &empty, &depth_layout];
+            let constants =
+                [("SEARCH_TEXELS", f64::from(quality.search_texels)), ("SOFT_TEXELS", f64::from(quality.soft_texels))];
+            let targets = [Some(FORMAT.into())];
             let pipeline = |entry: &str| {
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some(entry),
-                    layout: Some(&pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &context.shader,
-                        entry_point: Some("vs_sky"),
-                        compilation_options: Default::default(),
-                        buffers: &[],
-                    },
-                    primitive: Default::default(),
-                    depth_stencil: None,
-                    multisample: Default::default(),
-                    fragment: Some(wgpu::FragmentState {
-                        module: &context.shader,
-                        entry_point: Some(entry),
-                        compilation_options: wgpu::PipelineCompilationOptions {
-                            constants: &[
-                                ("SEARCH_TEXELS", f64::from(quality.search_texels)),
-                                ("SOFT_TEXELS", f64::from(quality.soft_texels)),
-                            ],
-                            ..Default::default()
-                        },
-                        targets: &[Some(FORMAT.into())],
-                    }),
-                    multiview_mask: None,
-                    cache: None,
-                })
+                gpu_util::full_screen_pipeline(
+                    device,
+                    entry,
+                    &context.shader,
+                    ("vs_sky", entry),
+                    &layouts,
+                    &targets,
+                    &constants,
+                )
             };
-            let empty = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("sun mask"),
-                layout: &empty,
-                entries: &[],
-            });
+            let empty = gpu_util::bind_group(device, "sun mask", &empty, &[]);
             Passes { mask: pipeline("fs_sun_mask"), contact: pipeline("fs_contact"), empty }
         });
         let size = if passes.is_some() { size } else { (1, 1) };
@@ -155,24 +132,15 @@ impl SunMask {
     pub(super) fn draw(&self, encoder: &mut wgpu::CommandEncoder, frame: &wgpu::BindGroup) {
         let Some(passes) = &self.passes else { return };
         for (pipeline, view) in [(&passes.mask, &self.targets.mask), (&passes.contact, &self.targets.contact)] {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("sun mask"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, frame, &[]);
-            pass.set_bind_group(1, &passes.empty, &[]);
-            pass.set_bind_group(2, &self.targets.depth, &[]);
-            pass.draw(0..3, 0..1);
+            let groups = [frame, &passes.empty, &self.targets.depth];
+            gpu_util::full_screen_pass(
+                encoder,
+                "sun mask",
+                view,
+                wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                pipeline,
+                &groups,
+            );
         }
     }
 }
@@ -210,19 +178,9 @@ impl Targets {
     }
 }
 
-fn texture(device: &wgpu::Device, format: wgpu::TextureFormat, (width, height): (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("sun mask"),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+fn texture(device: &wgpu::Device, format: wgpu::TextureFormat, size: (u32, u32)) -> wgpu::TextureView {
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "sun mask", size, format, usage)
 }
 
 /// A texel standing in for the cascade's depth range.
