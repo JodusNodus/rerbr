@@ -192,8 +192,18 @@ pub(super) struct Glow {
     pub(super) view: wgpu::TextureView,
     /// Its alpha counts (not DXT1).
     pub(super) alpha: bool,
-    /// It glows by day too (the start board's lamps), not only by night and at dusk.
-    pub(super) day: bool,
+    pub(super) kind: GlowKind,
+}
+
+/// What lights an emissive mask (`backlit` in `shader.wgsl`, `mode.glow.z`): always on, at its own luminance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GlowKind {
+    /// A dial's backlight (`DIAL_LUMINANCE`): a needle gauge's, a car texture's own mask, the start board's digits.
+    Dial = 0,
+    /// The start board's lit lamps (`SIGNAL_LUMINANCE`).
+    Signal = 1,
+    /// A gauge with no needle, digits, bars and lamps (`DISPLAY_LUMINANCE`).
+    Display = 2,
 }
 
 /// The texture views a draw can sample: the loaded stage textures and the two placeholders.
@@ -258,7 +268,7 @@ pub(super) fn bind_group(
         glow: [
             f32::from(u8::from(glow.is_some())),
             f32::from(u8::from(glow.is_some_and(|g| g.alpha))),
-            f32::from(u8::from(glow.is_some_and(|g| g.day))),
+            glow.map_or(0.0, |g| f32::from(g.kind as u8)),
             key.shade.map_or(0.0, |s| f32::from(s.glow_kind)),
         ],
         lamp: key.shade.and_then(|s| s.glow).unwrap_or_default(),

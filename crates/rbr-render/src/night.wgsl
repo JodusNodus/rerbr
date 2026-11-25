@@ -2,8 +2,8 @@
 // moonlight, lit by the car's lamps (`lights::Lamp`), under a night sky with stars and the moon where the sun would be.
 // The stage's baked light is daylight, so the stage's albedo is its textures times the bake's occlusion
 // (`night_albedo`): moonlight (`frame.moon`) and the lamps light that.
-// A backlit texel against its texture (`backlit` in `shader.wgsl`, ours).
-const DIAL_GLOW: f32 = 1.6;
+// A dial's backlight, cd/m2 (`backlit` in `shader.wgsl`, ours): what was 1.6 of the night's pre-exposed light.
+const DIAL_LUMINANCE: f32 = 1.6 / NIGHT_PRE_EXPOSURE;
 
 // 1 where the headlights reach `world` past the stage, 0 in a shadow (`Renderer::lamp_shadow_matrix` in `renderer/shadows.rs`,
 // layer `LAMP_LAYER` of `sun_map`, `sun::LAMP`): a 3x3 filter (`lamp_shadow` in `lamps.wgsl`), looked up off the surface toward

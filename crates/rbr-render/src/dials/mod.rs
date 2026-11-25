@@ -15,7 +15,8 @@
 //! `RPMLimit`. A `Damage` element shows the HUD's body damage for every part (the live drive reports no part damage),
 //! a `Pie` the wedge from its first angle, clockwise. The values the live drive does not report are fixed: warm oil, a
 //! steady oil pressure while the engine runs, whole tyres; the warning lights follow the HUD's lamps. The emissive
-//! masks light the faces by night (`shader.wgsl`, `DIAL_GLOW`). `Pulse` effects are not drawn.
+//! masks light the faces (`backlit` in `shader.wgsl`): a needle gauge's as a dial's backlight, the others' as a
+//! display's. `Pulse` effects are not drawn.
 
 use crate::renderer::Renderer;
 use crate::stage::{Image, Stage, TextureRef, TextureSet};
@@ -459,9 +460,11 @@ impl Face {
         let atlas = Atlas::parse(&String::from_utf8_lossy(&file(&config.atlas)?));
         let sprites =
             read_image(&file(&atlas.texture)?, &atlas.texture).ok_or(Skipped::Unreadable(atlas.texture.clone()))?;
+        let display = !config.elements.iter().any(|e| matches!(e.kind, Kind::Rotating(_)));
         for key in &keys {
             if let Some(texture) = stage.textures.get_mut(key) {
-                texture.image = Some(Image::Dial { base: remapped.clone(), glow: glow.clone(), texels, art });
+                let glow = glow.clone();
+                texture.image = Some(Image::Dial { base: remapped.clone(), glow, display, texels, art });
             }
         }
         let mut face = Face {

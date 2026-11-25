@@ -11,7 +11,7 @@ use super::shadows::shadow_map;
 use super::sun_mask::SunMask;
 use super::textures::dds_texture;
 use super::textures::{
-    bind_group, bind_key, depth_view, luminance_texture, solid_texture, Glow, Samplers, Views, CLEAR, WHITE,
+    bind_group, bind_key, depth_view, luminance_texture, solid_texture, Glow, GlowKind, Samplers, Views, CLEAR, WHITE,
 };
 use super::uniforms::{frame_index, FrameBinding, FrameUniform};
 use super::uniforms::{LampUniform, MAX_LAMPS};
@@ -189,15 +189,15 @@ impl Renderer {
                 .textures
                 .iter()
                 .filter_map(|(&key, texture)| {
-                    let lit = |bytes: &[u8]| {
+                    let lit = |bytes: &[u8], kind| {
                         let mask = dds::parse(bytes).ok()?;
                         // DXT1 has no alpha to read (its texels are opaque).
                         let view = dds_texture(&device, &queue, &mask).create_view(&Default::default());
-                        Some(Glow { view, alpha: mask.format != dds::Format::Dxt1, day: false })
+                        Some(Glow { view, alpha: mask.format != dds::Format::Dxt1, kind })
                     };
                     let texture = match texture.image.as_ref()? {
                         Image::Dds(bytes) => {
-                            if let Some(glow) = texture.glow.as_deref().and_then(lit) {
+                            if let Some(glow) = texture.glow.as_deref().and_then(|b| lit(b, GlowKind::Dial)) {
                                 glows.insert(key, glow);
                             }
                             dds_texture(&device, &queue, &dds::parse(bytes).ok()?)
@@ -206,8 +206,9 @@ impl Renderer {
                         Image::Shadow { width, height, pixels } => {
                             luminance_texture(&device, &queue, *width, *height, pixels)
                         }
-                        Image::Dial { base, glow, .. } => {
-                            if let Some(glow) = glow.as_deref().and_then(lit) {
+                        Image::Dial { base, glow, display, .. } => {
+                            let kind = if *display { GlowKind::Display } else { GlowKind::Dial };
+                            if let Some(glow) = glow.as_deref().and_then(|b| lit(b, kind)) {
                                 glows.insert(key, glow);
                             }
                             // The textures of one file with one base (a face's, each drawn the same) share a target,
@@ -241,7 +242,7 @@ impl Renderer {
                 stage.start_digits.as_deref().and_then(|b| dds::parse(b).ok()).map(|d| start_board::Rgba::decode(&d));
             let board = StartBoard::new(&device, &queue, placeholder, digits);
             views.loaded.insert(texture, board.face.view());
-            views.glows.insert(texture, Glow { view: board.face.glow_view(), alpha: false, day: false });
+            views.glows.insert(texture, Glow { view: board.face.glow_view(), alpha: false, kind: GlowKind::Dial });
             Some(board)
         });
         let start_lamps = start_board::LAMPS.map(|(name, signal)| {
@@ -252,7 +253,9 @@ impl Renderer {
                     let image = start_board::Rgba::decode(&dds::parse(bytes).ok()?);
                     let lamp = StartLamp::new(&device, &queue, image, signal);
                     views.loaded.insert(texture, lamp.face.view());
-                    views.glows.insert(texture, Glow { view: lamp.face.glow_view(), alpha: false, day: true });
+                    views
+                        .glows
+                        .insert(texture, Glow { view: lamp.face.glow_view(), alpha: false, kind: GlowKind::Signal });
                     Some(lamp)
                 })
                 .collect::<Vec<_>>()

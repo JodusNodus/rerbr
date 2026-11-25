@@ -1268,7 +1268,7 @@ not ported.
   Helette 22:30: the gauge cluster mirrored over the road). In a mirror's pass a backlit texel shows what a recessed
   face does past its bezel, `1 - DIAL_RECESS tan` of the angle off its face (0.25: 7 % at 75 degrees); the main view
   is unchanged (the A2's dash byte-identical; a recess there hollowed the orange dome lamp that stands out of the
-  dash). The dials are 25 cd/m2 (`DIAL_GLOW` over `NIGHT_PRE_EXPOSURE`), their 8 % reflection as bright as the lit
+  dash). The dials are about 32 cd/m2 (`DIAL_LUMINANCE`), their 8 % reflection as bright as the lit
   road, and local exposure takes the dials themselves down: the pair read alike. Left: the dome's reflection (a lit
   lamp), the Clio Rally3's display at the top of the glass (seen 45 degrees off from above, physical). The bulkhead (`glass::bulkhead`, with
   `windscreen`): a dark strip hanging 0.6 m from the glass's foot in the interior set, drawn as its first opaque lit
@@ -1771,8 +1771,18 @@ without the bounce crushed the Fiesta's dash (32, its detail gone). 14 cockpit s
 rain, snow, night; stock and DiRT cars), lower third: day 621 DiRT Fiesta 64 to 39, golden 532 Clio 54 to 41, fog Alpes
 GC8 56 to 45, snow Peklo DiRT Escort 42 to 28, rain unchanged (the cabin metered no darker), nights within 2 levels.
 Tried and dropped (user): the cabin lifted by 0.5 or 0.7 of its metered gap to the outside (Far Cry 5's GI-based local
-exposure, McAuley 2018). Open: the DiRT Impreza's digital display, not a needle's face and so without
-`CABIN_GAUGE_LEAST`, reads dark under its hood.
+exposure, McAuley 2018).
+
+Gauge lights always on (user's call, 2026-11-25, `backlit`): every emissive mask lights its face at any hour at a
+luminance of its own, added to the light the face reflects, so the exposure decides what shows (was by night and at dusk
+only, the brighter of the two). A needle gauge's mask, a car texture's own and the start board's digits are a dial's
+backlight, about 32 cd/m2 (`DIAL_LUMINANCE`, the former night value), drowned by day; a gauge pack config with no needle
+(digits, bars, lamps; `Image::Dial::display`: 57 of the 100 RSF cars with packs, every DiRT display) a display's, 1000
+cd/m2 by day (`DISPLAY_LUMINANCE`, a sunlight-readable dash), dimmed to a dial's along `frame.dusk.w` as a dash's light
+sensor dims it. Day frames at 13:00 to golden hour: the DiRT Impreza's bar graph, dark under its hood, reads lit amber
+(at 300 a dim amber); the 306's gear LED glows red, its LCD face warms a little; the i20 WRC 2020's and Clio Rally3's
+screens a little brighter; the Escort's needle dials unchanged. Nights (Impreza, 306, i20, Clio, Escort) within 23 of
+255 of before, where the reflected light now adds.
 
 Exposure in the cockpit (until 2026-11-25, now one exposure, above; user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the

@@ -34,8 +34,8 @@ pub(super) struct ModeUniform {
     pub(super) light: [f32; 4],
     /// `FresnelMin`, `FresnelMax`, `Kf`.
     pub(super) fresnel: [f32; 4],
-    /// `x` 1 for a dial with an emissive mask in `glow_texture` (`DIAL_GLOW` in `shader.wgsl`), `y` 1 when its alpha
-    /// counts.
+    /// `x` 1 for a dial with an emissive mask in `glow_texture` (`backlit` in `shader.wgsl`), `y` 1 when its alpha
+    /// counts, `z` what lights it (`textures::GlowKind`), `w` a lit lamp's kind (`stage::Shade::glow_kind`).
     pub(super) glow: [f32; 4],
     /// `x` a glass pane's share of the mud film (`Shade::grime`), `y` 1 for interior glass (`Shade::tint`), `z` 1 for
     /// a wheel's or mud flap's dirt spatter (`Shade::spatter`), `w` 1 for a window (`Shade::window`).
