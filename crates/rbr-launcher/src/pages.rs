@@ -602,7 +602,7 @@ mod tests {
 
     use super::*;
     use crate::graphics_page::WetRoads;
-    use crate::settings::{load, Clouds, Fog, Precipitation, Settings};
+    use crate::settings::{load, Clouds, Fog, Rain, Settings};
     use crate::{Start, SETTINGS_FILE};
     use rbr_gameplay::race_options::{DamageLevel, Skill};
     use rbr_render::renderer::Detail;
@@ -671,7 +671,7 @@ mod tests {
         }
         round_trips(Fog::Off);
         round_trips(Clouds::Clear);
-        round_trips(Precipitation::None);
+        round_trips(Rain::None);
         round_trips(WetRoads::Off);
         round_trips(DamageLevel::Safe);
         round_trips(Skill::Rookie);
