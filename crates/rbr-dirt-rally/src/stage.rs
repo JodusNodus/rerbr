@@ -10,7 +10,7 @@ use rbr_btb_writer::objects::Objects;
 use rbr_btb_writer::stage::{publish, Destination};
 use rbr_btb_writer::{
     control::Control,
-    geometry::{Grid, Triangle},
+    geometry::{Grid, Triangle, COLLISION_TILE, FAR_REACH, SCENERY_CELL},
     mesh::{self as xwrite, XMesh},
     pacenotes,
     road::Line,
@@ -178,12 +178,6 @@ pub fn convert(input: &Input, options: &Options) -> Result<Report, String> {
     Ok(Report { folder, ..report })
 }
 
-/// ReRBR's far plane, metres (`rbr_btb::circuit::FAR`'s reach for drawn scenery).
-const FAR: f64 = 10_000.;
-/// Side of the cells ReRBR merges drawn meshes into (its BTB stage's `CELL`), metres.
-const SCENERY_CELL: f64 = 128.;
-/// Side of the collision tiles, metres (as the AC converter's).
-const COLLISION_TILE: f64 = 300.;
 
 /// One mesh being gathered: deduplicated vertices in the BTB mesh's axes (x, height, y) about the origin.
 #[derive(Default)]
@@ -491,7 +485,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         };
         // Opaque ground is drawn as far as ReRBR sees, so the valley below and the mountains around stay in view.
         let m = &input.materials[*material];
-        let lod = m.range.unwrap_or(if m.transparent { options.lod } else { FAR });
+        let lod = m.range.unwrap_or(if m.transparent { options.lod } else { FAR_REACH });
         let lod_in = input.instanced.lod_in.get(&(*material as u32)).copied().unwrap_or(0.);
         let entries = format!("LODIn={lod_in}\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
         mesh(&mut objects, builder, &section, "identity", &entries)?;

@@ -1,7 +1,7 @@
 # DiRT Rally conversion
 
 DiRT Rally (2015, Codemasters' EGO engine) stages read from the player's own install and written as BTB stages, in
-`crates/rbr-dirt-rally` (its readers stay in that crate). The sample install is the Feral Linux port (Steam,
+`crates/rbr-dirt-rally` (its readers stay in that crate; the BTB writing it shares with the Assetto Corsa converter is `crates/rbr-btb-writer`). The sample install is the Feral Linux port (Steam,
 `steamapps/common/DiRT Rally/share/data`): loose files, gzip and plain formats, nothing encrypted but the game's own
 `game.bin` and car physics. Whether the Windows release lays its files out the same is not checked. Findings from the
 investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each still to be confirmed by the readers' tests.

@@ -5,7 +5,7 @@ use rbr_btb_writer::{
     materials,
     control::Control,
     corridor::{ground_near, Corridor},
-    geometry::{Grid, Triangle},
+    geometry::{Grid, Triangle, COLLISION_TILE, FAR_REACH, SCENERY_CELL},
     ini,
     mesh::{self as xwrite, XMesh},
     objects::Objects,
@@ -181,6 +181,15 @@ fn triplet(value: Option<&str>) -> Result<[f32; 3], String> {
 }
 
 impl Input {
+    /// The stage's name: the track's title, and its layout when it has more than one.
+    pub fn stage_title(&self) -> String {
+        if self.layout == "." {
+            self.title.clone()
+        } else {
+            format!("{} [{}]", self.title, self.layout)
+        }
+    }
+
     pub fn read(root: &Path, layout: &str) -> Result<Self, String> {
         Self::read_with_ai(root, layout, None, false, false)
     }
@@ -444,20 +453,16 @@ impl Builder {
 }
 
 fn tile(t: &Triangle) -> (i64, i64) {
-    let c = |k: usize| ((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / 300.).floor() as i64;
+    let c = |k: usize| ((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / COLLISION_TILE).floor() as i64;
     (c(0), c(1))
 }
 
-/// Side of the cells ReRBR merges drawn meshes into (`CELL` in its BTB stage), metres.
-const SCENERY_CELL: f64 = 128.;
 /// A mesh wider than this half extent is drawn alone and ReRBR adds its radius to the range itself.
 const SOLO: f32 = 150.;
 
 /// Scenery past the draw corridor is kept where its triangles are large for their distance from the course: a longest
 /// side of at least this share of it (over a degree), the mountains, sea and tree lines AC draws to the horizon.
 const FAR_SHARE: f64 = 1. / 50.;
-/// Nothing past this distance from the course is kept, and far scenery is drawn this far: ReRBR's far plane (`coords::FAR`).
-const FAR_REACH: f64 = 10_000.;
 /// Side of the tiles far scenery is grouped in, metres: each is a mesh of its own (over [`SOLO`]).
 const FAR_CELL: f64 = 1024.;
 
@@ -1294,7 +1299,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         }
         None => None,
     };
-    let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
+    let title = input.stage_title();
     let info = ini::TrackInfo {
         name: &title,
         physics,
