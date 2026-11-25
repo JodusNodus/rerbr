@@ -1,58 +1,165 @@
-//! A DiRT car's working gauges as an RBRHUD gauge pack (`rbr_formats::rbrhud`, drawn by `rbr_render::dials`).
+//! A DiRT car's working displays as an RBRHUD gauge pack (`rbr_formats::rbrhud`, drawn by `rbr_render::dials`).
 //!
-//! DiRT moves needle meshes, scrolls strips of digits over small quads and swaps the lamps' texture halves
-//! (`interior_config`'s `displays`: the tach's `int_needle_tach`, the speed and gear `lcd_text` quads, the shift and
-//! limit `indicator_light`s). The needles are the model's own meshes, turned by the renderer from the gauges file
-//! (`crate::needles`); the rest the renderer redraws from an RBRHUD pack made from the interior file's textures: the
-//! speed digits drawn into the display's box on the dials atlas, the gear digit onto a small texture of its own (the
-//! gear quad's), the lamps' lit halves over their unlit ones, and DiRT's backlight map (`int_cme_dials_on`) as the night
-//! glow. Where the pack puts things is measured on the cme's textures ([`Layout`]).
+//! The interior config's `displays` name the nodes DiRT animates besides the needles (`crate::needles`): `digital`
+//! quads over which it scrolls a font's strip (speed, engine speed, gear), `motec` bar graphs whose bars it shows by a
+//! mask's value against the engine speed, and `indicator_light` lamps whose texture it moves to the lit half. The
+//! renderer redraws textures, not UVs, and the lamps share one texture, so each display node gets a texture of its own
+//! ([`Display::key`]: its faces take a material named so) which a config of the pack draws on: the digits into the
+//! font's cells side by side, as the quad's UVs lay them (u across the characters, v down one cell); the face with the
+//! bars lit past their engine speed; the lamp's lit half or its dimmed unlit one over the unlit half its UVs show.
+use crate::car::Part;
 use crate::car_pack::file;
-use crate::pssg::Pssg;
-use crate::texture::Texture;
+use crate::material::Material;
+use crate::needles::{attribute, displays};
+use crate::texture::{Format, Texture};
 use rbr_formats::dds;
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Where a car's gauges lie in its interior textures, texels, as measured on them.
-pub struct Layout {
-    pub car: &'static str,
-    /// The speed display's box on the dials atlas (`x0, y0, x1, y1`).
-    pub display: [f32; 4],
-}
-
-/// The Escort Mk II (`cme`).
-pub const CME: Layout = Layout { car: "cme", display: [174.0, 351.0, 389.0, 415.0] };
-
-pub fn layout(car: &str) -> Option<&'static Layout> {
-    [&CME].into_iter().find(|l| l.car == car)
-}
-
-/// The gear display's texture size (the gear quad has its own texture): the quad's proportions, 2.07 by 3.5 cm, the
-/// font's 32 pixel cell stretched over it as DiRT does.
-pub const GEAR_SIZE: [usize; 2] = [64, 112];
-/// The car pack's keys of the textures the gauges redraw (`car_pack::file` names their files): the dials atlas, the
-/// gear display and the lamps.
-const DIALS: &str = "int_dials";
-const GEAR: &str = "int_gear";
-const LAMPS: &str = "int_indicator";
-
-/// The file of a redrawn texture's night glow map.
-fn glow_file(key: &str) -> String {
-    file(&format!("{key}_em"))
-}
-
-/// An LED display's red (the font's own is dim: DiRT adds it to the dash as light).
-const GEAR_RED: [u8; 3] = [255, 48, 36];
-/// The speed digits' colour: an LCD's, dark (DiRT's shader draws them black).
-const LCD_INK: [u8; 3] = [20, 22, 18];
+/// The game's engine speed, rad/s, to rpm.
+const RPM: f32 = 30.0 / std::f32::consts::PI;
+/// A font's characters: ten cells down its strip (the digits, or the gear's `N`, 1 to 8 and `R`).
+const CELLS: usize = 10;
+/// A character's texels in a display's own texture.
+const CELL: usize = 64;
+/// The sprite sheet's width.
+const SHEET: usize = 1024;
 /// An unlit lamp is drawn this much of its atlas colour, and glows this much of its lit state's map by night:
 /// the glow is the texel times the map, so a dim lamp drawn as the atlas has it glows at night nearly as a lit one.
 const LAMP_OFF: f32 = 0.4;
 const LAMP_GLOW: f32 = 0.6;
-/// The font's cell: the digit strip's 64 x 51.2 pixels per character, and the gear font's 32 x 32.
-const DIGIT: [usize; 2] = [64, 51];
-const GEAR_CELL: usize = 32;
+
+/// What a digital display shows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Value {
+    Speed,
+    Revs,
+    Gear,
+}
+
+pub enum Kind {
+    /// `chars` characters of `font` (the node's material's `TEmissiveMap`).
+    Digits { value: Value, chars: usize, font: Texture },
+    /// `face` with each bar of `bars` (the texels of one `mask` value) lit past its engine speed: the mask's `alpha`
+    /// range spans the `rpm` range. `glow` is the face's backlight.
+    Bars { face: Texture, bars: Texture, mask: Texture, glow: Option<Texture>, alpha: [f32; 2], rpm: [f32; 2] },
+    /// `texture`'s right half (plus `lit`, its emissive map) drawn over its left one past `rpm`.
+    Lamp { texture: Texture, lit: Texture, rpm: f32 },
+}
+
+/// A working display: its node in the interior scene, the material of its faces there, and what it draws.
+pub struct Display {
+    pub node: String,
+    pub material: String,
+    pub kind: Kind,
+}
+
+impl Display {
+    /// The car pack's key of the display's own texture (`gauge_int_digi_speed`).
+    pub fn key(&self) -> String {
+        format!("gauge_{}", self.node)
+    }
+
+    /// The texture's alpha is the faces' opacity: an LCD's digits, whose font has an alpha, over the face behind.
+    pub fn opacity(&self) -> bool {
+        matches!(&self.kind, Kind::Digits { font, .. } if font.format == Format::Dxt5)
+    }
+
+    /// The display's own texture as the car's `.dds`: the base the pack draws on.
+    pub fn texture(&self) -> Vec<u8> {
+        self.base().dds()
+    }
+
+    fn base(&self) -> Image {
+        match &self.kind {
+            Kind::Digits { chars, .. } => {
+                Image::filled(chars * CELL, CELL, if self.opacity() { [0; 4] } else { [0, 0, 0, 255] })
+            }
+            Kind::Bars { face, .. } => Image::decode(face),
+            Kind::Lamp { texture, .. } => Image::decode(texture),
+        }
+    }
+
+    /// The night glow map: the LED's whole texture (its black stays black), the bar graph's backlight, the lamp's lit
+    /// map scaled on both halves (the lit sprite is drawn over the unlit half); none for an LCD's digits.
+    fn glow(&self) -> Option<Image> {
+        let base = self.base();
+        match &self.kind {
+            Kind::Digits { .. } => (!self.opacity()).then(|| Image::filled(base.w, base.h, [255, 255, 255, 0])),
+            Kind::Bars { glow, .. } => glow.as_ref().map(|g| Image::decode(g).resized(base.w, base.h).opaque(0)),
+            Kind::Lamp { lit, .. } => {
+                let lit = Image::decode(lit).resized(base.w, base.h);
+                let half = lit.w / 2;
+                let glow = |c: u8| (f32::from(c) * LAMP_GLOW).round() as u8;
+                Some(lit.map(|x, y, t| {
+                    let own = if x < half { lit.at(x + half, y) } else { t };
+                    [glow(own[0]), glow(own[1]), glow(own[2]), 0]
+                }))
+            }
+        }
+    }
+}
+
+/// The working displays of the interior `scene`, whose `config` names them, with their textures (`find`, by name in
+/// the interior file). Displays whose node is not in the scene, or whose material lacks a texture they draw from, are
+/// left out (most configs list digital displays the car does not have).
+pub fn read(
+    config: &str,
+    scene: &[Part],
+    materials: &BTreeMap<String, Material>,
+    find: impl Fn(&str) -> Result<Texture, String>,
+) -> Result<Vec<Display>, String> {
+    let mut out = Vec::new();
+    for kind in ["digital", "motec", "indicator_light"] {
+        for element in displays(config, kind) {
+            let attr = |name: &str| attribute(element, name);
+            let number = |name: &str| attr(name)?.trim().parse::<f32>().ok();
+            let Some(node) = attr("node") else { continue };
+            let Some(material) = scene.iter().filter(|p| p.name == node).flat_map(|p| &p.instances).next() else {
+                continue;
+            };
+            let Some(m) = materials.get(&material.material) else { continue };
+            let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#'));
+            let texture = |input: &str| bound(input).map(&find).transpose();
+            let rpm = |value: f32| number("factor").filter(|f| *f != 0.0).map(|f| value / f * RPM);
+            let display = match kind {
+                "digital" => {
+                    let value = match attr("value") {
+                        Some("speed") => Value::Speed,
+                        Some("tach") => Value::Revs,
+                        Some("gear") => Value::Gear,
+                        _ => continue,
+                    };
+                    let chars = number("num_chars").map_or(1, |n| n as usize).max(1);
+                    texture("TEmissiveMap")?.map(|font| Kind::Digits { value, chars, font })
+                }
+                "motec" => {
+                    let rpm = [rpm(number("min_value").unwrap_or(0.0)), rpm(number("max_value").unwrap_or(0.0))];
+                    let alpha = [number("min_alpha").unwrap_or(0.0), number("max_alpha").unwrap_or(255.0)];
+                    match (texture("TDiffuseAlphaMap")?, texture("TDiffuseAlphaMap_2")?, texture("TAlphaMaskMap")?, rpm)
+                    {
+                        (Some(face), Some(bars), Some(mask), [Some(low), Some(high)]) => {
+                            let glow = texture("TEmissiveMap")?;
+                            Some(Kind::Bars { face, bars, mask, glow, alpha, rpm: [low, high] })
+                        }
+                        _ => None,
+                    }
+                }
+                _ => match (texture("TDiffuseAlphaMap")?, texture("TEmissiveMap")?, number("cond_min").and_then(rpm)) {
+                    (Some(texture), Some(lit), Some(rpm)) if attr("value") == Some("tach") => {
+                        Some(Kind::Lamp { texture, lit, rpm })
+                    }
+                    _ => None,
+                },
+            };
+            if let Some(kind) = display {
+                out.push(Display { node: node.to_owned(), material: material.material.clone(), kind });
+            }
+        }
+    }
+    Ok(out)
+}
 
 /// RGBA8 texels.
 #[derive(Clone, Debug, PartialEq)]
@@ -97,8 +204,16 @@ impl Image {
         out
     }
 
+    /// The texels with their alpha set to `alpha`.
+    fn opaque(&self, alpha: u8) -> Image {
+        self.map(|_, _, t| [t[0], t[1], t[2], alpha])
+    }
+
     /// Bilinear, texel centres on texel centres.
     fn resized(&self, w: usize, h: usize) -> Image {
+        if (w, h) == (self.w, self.h) {
+            return self.clone();
+        }
         let mut out = Image::filled(w, h, [0; 4]);
         for y in 0..h {
             let v = ((y as f32 + 0.5) * self.h as f32 / h as f32 - 0.5).clamp(0.0, (self.h - 1) as f32);
@@ -123,362 +238,386 @@ impl Image {
     }
 }
 
-/// The font's glyphs the gear display shows, as the sprites' names and drawings: `N` and `1` to `9` from the file's
-/// `translate="0123456789"` cells (the first is the neutral's `N`), and `R`, a reverse the font has no glyph for, made
-/// from the lower left of its `6`. `font` is the file's 32 x 320 texels, B, G, R, A, rows from the bottom of the
-/// image. The glyphs are red on black; the sprite takes the red as its alpha, stretched to the display.
-fn gear_glyphs(font: &[u8]) -> Result<Vec<(String, Image)>, String> {
-    if font.len() < GEAR_CELL * GEAR_CELL * 10 * 4 {
-        return Err("the gear font is short".into());
+/// A font's ten characters, each stretched to a [`CELL`] square (the quad's v spans one cell). An LCD's font (DXT5) is
+/// black digits in its alpha, kept; an LED's (DXT1, a dim red on black, which DiRT adds to the dash as light) becomes its
+/// hue at full strength with its brightness, against the font's brightest texel, as the alpha.
+fn glyphs(font: &Texture) -> Vec<Image> {
+    let image = Image::decode(font);
+    let edge = |i: usize| (i as f32 * image.h as f32 / CELLS as f32).round() as usize;
+    let cells = (0..CELLS).map(|i| image.crop([0, edge(i), image.w, edge(i + 1) - edge(i)]).resized(CELL, CELL));
+    if font.format == Format::Dxt5 {
+        return cells.collect();
     }
-    let cell = |i: usize| -> Image {
-        let mut image = Image::filled(GEAR_CELL, GEAR_CELL, [0; 4]);
-        for y in 0..GEAR_CELL {
-            // The file's rows run from the bottom of the strip: cell `i`'s top row is the file's row `319 - 32 i`.
-            let row = (10 - i) * GEAR_CELL - 1 - y;
-            for x in 0..GEAR_CELL {
-                let red = font[(row * GEAR_CELL + x) * 4 + 2];
-                image.set(x, y, [0, 0, 0, (u32::from(red) * 255 / 153).min(255) as u8]);
-            }
-        }
-        image
+    let brightest = image.px.chunks_exact(4).map(|t| t[0].max(t[1]).max(t[2])).max().unwrap_or(0).max(1);
+    let led = |t: [u8; 4]| {
+        let peak = t[0].max(t[1]).max(t[2]);
+        let full = |c: u8| (u32::from(c) * 255 / u32::from(peak.max(1))) as u8;
+        [full(t[0]), full(t[1]), full(t[2]), (u32::from(peak) * 255 / u32::from(brightest)) as u8]
     };
-    let reverse = cell(6).map(|x, y, t| if (14..=25).contains(&y) && (3..=13).contains(&x) { t } else { [0; 4] });
-    let stretch = |glyph: &Image| {
-        glyph.resized(GEAR_SIZE[0], GEAR_SIZE[1]).map(|_, _, t| {
-            // The stretch softens the strokes; a steeper edge keeps them lines.
-            let alpha = ((f32::from(t[3]) / 255.0 - 0.2) / 0.6).clamp(0.0, 1.0);
-            [GEAR_RED[0], GEAR_RED[1], GEAR_RED[2], (alpha * 255.0).round() as u8]
-        })
-    };
-    let mut out = vec![("GearN".to_owned(), stretch(&cell(0)))];
-    out.extend((1..=9).map(|i| (format!("Gear{i}"), stretch(&cell(i)))));
-    out.push(("GearR".to_owned(), stretch(&reverse)));
-    Ok(out)
+    cells.map(|cell| cell.map(|_, _, t| led(t))).collect()
 }
 
-/// What the pack is made from: the interior file's textures and config, and the font of the gear display.
-pub struct Sources<'a> {
-    pub dials: &'a Texture,
-    pub dials_on: &'a Texture,
-    pub indicator: &'a Texture,
-    pub indicator_on: &'a Texture,
-    pub digits: &'a Texture,
-    pub gear_font: &'a [u8],
-    pub config: &'a str,
-}
-
-/// The value of attribute `name` of the first element of `config` that has `marker` (`value="gear"`).
-fn attribute<'a>(config: &'a str, marker: &str, name: &str) -> Option<&'a str> {
-    let element = config.split('<').find(|e| e.contains(marker))?;
-    let rest = element.split(&format!("{name}=\"")).nth(1)?;
-    rest.split('"').next()
-}
-
-/// A display of the config's `displays` as a number: the lamps' thresholds.
-fn number(config: &str, marker: &str, name: &str) -> Option<f32> {
-    attribute(config, marker, name)?.trim().parse().ok()
-}
-
-/// The font of the gear display: the config's `gear` display names it (`int_gear`), and the shared fonts file
-/// (`simplefonts/simple_fonts.pssg`, under `data`) holds its 32 x 320 texels, B, G, R, A.
-pub fn gear_font(data: &Path, config: &str) -> Result<Vec<u8>, String> {
-    let font = attribute(config, "value=\"gear\"", "font").ok_or("the interior config has no gear display")?;
-    let pssg = Pssg::read(&data.join("simplefonts/simple_fonts.pssg"))?;
-    let name = format!("{font}.dds");
-    let texture =
-        pssg.find("TEXTURE").find(|n| n.id() == Some(name.as_str())).ok_or(format!("no font texture {name}"))?;
-    Ok(texture.child("TEXTUREIMAGE").map(|image| image.payload().to_vec()).unwrap_or_default())
-}
-
-/// The sprite sheet: the speed digits as a `simplefont` strip (`rbrhud::FONT_CHARS` is its order of 13 cells, the
-/// last three empty), then the gear glyphs and the lamps' lit and dimmed halves. Its `.ini` names them.
-struct Atlas {
+/// The sprite sheet: sprites in rows [`SHEET`] wide, named in its `.ini`.
+struct Sheet {
     image: Image,
+    at: [usize; 2],
+    row: usize,
     ini: String,
 }
 
-fn atlas(sources: &Sources) -> Result<Atlas, String> {
-    let digits = Image::decode(sources.digits);
-    let glyphs = gear_glyphs(sources.gear_font)?;
-    let glyph = |i: usize| digits.crop([0, (i as f32 * 51.2).round() as usize, DIGIT[0], DIGIT[1]]);
-    let ink = |t: [u8; 4]| [LCD_INK[0], LCD_INK[1], LCD_INK[2], t[3]];
-    let mut image = Image::filled(13 * DIGIT[0], 288, [0; 4]);
-    (0..10).for_each(|i| image.paste(&glyph(i).map(|_, _, t| ink(t)), i * DIGIT[0], 0));
-    let mut objects = Vec::new();
-    let mut place = |name: &str, sprite: &Image, x: usize, y: usize| {
-        image.paste(sprite, x, y);
-        objects.push(format!("{name}.png={x},{y},{},{}", sprite.w, sprite.h));
-    };
-    for (i, (name, sprite)) in glyphs.iter().enumerate() {
-        place(name, sprite, 48 + i * 68, 56);
+impl Sheet {
+    fn new() -> Sheet {
+        Sheet { image: Image::filled(SHEET, 0, [0; 4]), at: [0, 0], row: 0, ini: String::new() }
     }
-    // The lamps: the indicator texture's right column is the lit state (its diffuse and its emissive map add), the left
-    // column the unlit one; red on top (the limit), amber below (the shift).
-    let (lamps, lit) = (Image::decode(sources.indicator), Image::decode(sources.indicator_on));
-    let half = lamps.w / 2;
-    let lit_cell = |row: usize| {
-        let at = [half, row * lamps.h / 2, half, lamps.h / 2];
-        let (diffuse, emissive) = (lamps.crop(at), lit.crop(at));
-        let mut cell = diffuse;
-        cell.px.iter_mut().zip(&emissive.px).for_each(|(c, e)| *c = c.saturating_add(*e));
-        cell.map(|_, _, t| [t[0], t[1], t[2], 255])
-    };
-    let unlit_cell = |row: usize| {
-        let cell = lamps.crop([0, row * lamps.h / 2, half, lamps.h / 2]);
-        let dim = |c: u8| (f32::from(c) * LAMP_OFF).round() as u8;
-        cell.map(|_, _, t| [dim(t[0]), dim(t[1]), dim(t[2]), 255])
-    };
-    place("LimitOn", &lit_cell(0), 48, 176);
-    place("ShiftOn", &lit_cell(1), 116, 176);
-    place("LimitOff", &unlit_cell(0), 184, 176);
-    place("ShiftOff", &unlit_cell(1), 252, 176);
-    let ini = format!(
-        "[MAIN]\ntexture=textures/atlas.dds\n[Objects]\n{}\n[Digits.png]\nsimplefont=0,0,{},{}\n",
-        objects.join("\n"),
-        13 * DIGIT[0],
-        DIGIT[1]
-    );
-    Ok(Atlas { image, ini })
-}
 
-/// The dials atlas's night glow map (`emissive_mask`): DiRT's backlight map at the atlas's size.
-fn dials_glow(sources: &Sources) -> Image {
-    let dials = Image::decode(sources.dials);
-    let map = Image::decode(sources.dials_on);
-    let map = if map.w == dials.w { map } else { map.resized(dials.w, dials.h) };
-    map.map(|_, _, t| [t[0], t[1], t[2], 0])
-}
-
-/// The lamps' night glow map: the lit half's map, scaled, on both halves (the lit sprite is drawn over the unlit half).
-fn lamps_glow(sources: &Sources) -> Image {
-    let lit = Image::decode(sources.indicator_on);
-    let half = lit.w / 2;
-    let glow = |c: u8| (f32::from(c) * LAMP_GLOW).round() as u8;
-    lit.map(|x, y, t| {
-        let own = if x < half { lit.at(x + half, y) } else { t };
-        [glow(own[0]), glow(own[1]), glow(own[2]), 0]
-    })
-}
-
-/// The gear display's base: black, which the digit is drawn on.
-pub fn gear_base() -> Vec<u8> {
-    let black = Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [0, 0, 0, 255]);
-    rbr_ac_tracks::btb::textures::encode(false, black.w as u32, black.h as u32, black.px)
-}
-
-/// The three `config<N>.ini`s of the pack.
-fn configs(layout: &Layout, config: &str) -> [String; 3] {
-    let (shift, limit) = (
-        number(config, "node=\"int_indicator_shift_1\"", "cond_min").unwrap_or(7.9) * 1000.0,
-        number(config, "node=\"int_indicator_limit\"", "cond_min").unwrap_or(8.9) * 1000.0,
-    );
-    let main = |key: &str| {
-        format!(
-            "[main]\nauthor = rbr-dirt-rally\natlas = textures/atlas.ini\ntexture = {}\nemissive_mask = textures/{}\n",
-            file(key),
-            glow_file(key)
-        )
-    };
-    let [x0, y0, x1, y1] = layout.display;
-    // Three digits fill the box (the strip's cells are 64 wide), the row of them in the box's middle.
-    let scale = (x1 - x0 - 4.0) / (3.0 * DIGIT[0] as f32);
-    let top = y0 + ((y1 - y0) - DIGIT[1] as f32 * scale) / 2.0;
-    let region = format!(
-        "[dirtyregion1]\ntype = DirtyRegion\nleft = {}\ntop = {}\nright = {}\nbottom = {}\n",
-        x0.floor(),
-        y0.floor(),
-        x1.ceil(),
-        y1.ceil()
-    );
-    let dials = format!(
-        "{}{region}\n[speed]\ntype = Number\ndata = SpeedKPH\nmode = 0\nxpos = {}\nypos = {}\nscale = {:.4}\nrotation = 0.0\n\
-         colour = ffffffff\nfont = Digits.png\nformat = Whole\njustification = Right\nprefixenabled = false\n\
-         suffixenabled = false\n",
-        main(DIALS),
-        x1 - 2.0,
-        top,
-        scale,
-    );
-    // Reverse is the drive's gear 0, neutral 1, first 2.
-    let mut gear = main(GEAR);
-    let shown = std::iter::once(("GearR".to_owned(), 0))
-        .chain([("GearN".to_owned(), 1)])
-        .chain((1..=9).map(|g| (format!("Gear{g}"), g + 1)));
-    for (sprite, equal) in shown {
-        gear += &format!(
-            "\n[{sprite}]\ntype = Simple\ndata = Gear\nmode = 0\nxpos = 0\nypos = 0\nscale = 1.0\nrotation = 0.0\ncolour = ffffffff\n\
-             texture = {sprite}.png\nequal = {equal}\n"
-        );
+    /// Puts `image` on the sheet: its rect, `x, y, w, h`.
+    fn place(&mut self, image: &Image) -> [usize; 4] {
+        if self.at[0] + image.w > SHEET {
+            self.at = [0, self.at[1] + self.row];
+            self.row = 0;
+        }
+        let [x, y] = self.at;
+        let h = (y + image.h).max(self.image.h).next_multiple_of(4);
+        self.image.px.resize(SHEET * h * 4, 0);
+        self.image.h = h;
+        self.image.paste(image, x, y);
+        self.at[0] += image.w;
+        self.row = self.row.max(image.h);
+        [x, y, image.w, image.h]
     }
-    // A lamp over its engine speed shows its lit half, under it its dimmed unlit one.
-    let lamp = |sprite: &str, y: usize, over: f32| {
-        let element = |state: &str, when: &str| {
-            format!(
-                "\n[{sprite}{state}]\ntype = Simple\ndata = RPM\nmode = 0\nxpos = 0\nypos = {y}\nscale = 1.0\nrotation = 0.0\n\
-                 colour = ffffffff\ntexture = {sprite}{state}.png\n{when} = {over}\n"
-            )
-        };
-        element("On", "threshold") + &element("Off", "limit")
-    };
-    let lamps = main(LAMPS) + &lamp("Shift", 64, shift) + &lamp("Limit", 0, limit);
-    [dials, gear, lamps]
+
+    fn sprite(&mut self, name: &str, image: &Image) {
+        let [x, y, w, h] = self.place(image);
+        self.ini += &format!("{name}.png={x},{y},{w},{h}\n");
+    }
+
+    /// A `simplefont` strip: `rbrhud::FONT_CHARS`' 13 cells, the digits then three empty ones.
+    fn font(&mut self, name: &str, digits: &[Image]) -> String {
+        let mut strip = Image::filled(13 * CELL, CELL, [0; 4]);
+        digits.iter().enumerate().for_each(|(i, glyph)| strip.paste(glyph, i * CELL, 0));
+        let [x, y, w, h] = self.place(&strip);
+        format!("[{name}.png]\nsimplefont={x},{y},{w},{h}\n")
+    }
 }
 
-/// Writes the pack under `root/Plugins/RBRHUD/gauges/<car>/` (the folder beside `Cars/`, where the viewer reads a car's
-/// gauges from): the three configs, the sprite sheet and the glow maps.
-pub fn write(root: &Path, car: &str, layout: &Layout, sources: &Sources) -> Result<(), String> {
+/// An element of a config.
+fn element(name: &str, data: &str, [x, y]: [usize; 2], what: &str) -> String {
+    format!("\n[{name}]\ntype = Simple\ndata = {data}\nmode = 0\nxpos = {x}\nypos = {y}\nscale = 1.0\nrotation = 0.0\ncolour = ffffffff\n{what}")
+}
+
+/// The display's config, its sprites put on `sheet`.
+fn config(display: &Display, sheet: &mut Sheet, fonts: &mut String) -> String {
+    let key = display.key();
+    let node = &display.node;
+    let mut text = format!("[main]\nauthor = rbr-dirt-rally\natlas = textures/atlas.ini\ntexture = {}\n", file(&key));
+    if display.glow().is_some() {
+        text += &format!("emissive_mask = textures/{}\n", glow_file(&key));
+    }
+    match &display.kind {
+        Kind::Digits { value: Value::Gear, font, .. } => {
+            // Reverse is the drive's gear 0, neutral 1, first 2; the font's cells are N, 1 to 8 and R.
+            let glyphs = glyphs(font);
+            let shown = [(0, CELLS - 1), (1, 0)].into_iter().chain((1..CELLS - 1).map(|g| (g + 1, g)));
+            for (gear, cell) in shown {
+                let name = format!("{node}_{gear}");
+                sheet.sprite(&name, &glyphs[cell]);
+                text += &element(&name, "Gear", [0, 0], &format!("texture = {name}.png\nequal = {gear}\n"));
+            }
+        }
+        Kind::Digits { value, chars, font } => {
+            let name = format!("{node}_digits");
+            *fonts += &sheet.font(&name, &glyphs(font));
+            let data = if *value == Value::Speed { "SpeedKPH" } else { "RPM" };
+            text += &format!(
+                "\n[{node}]\ntype = Number\ndata = {data}\nmode = 0\nxpos = {}\nypos = 0\nscale = 1.0\nrotation = 0.0\n\
+                 colour = ffffffff\nfont = {name}.png\nformat = Whole\njustification = Right\nprefixenabled = false\n\
+                 suffixenabled = false\n",
+                chars * CELL
+            );
+        }
+        Kind::Bars { bars, mask, alpha, rpm, .. } => {
+            for (value, [x, y, ..], sprite) in bar_sprites(&Image::decode(bars), &Image::decode(mask)) {
+                let name = format!("{node}_{value}");
+                sheet.sprite(&name, &sprite);
+                let past = rpm[0] + (f32::from(value) - alpha[0]) / (alpha[1] - alpha[0]) * (rpm[1] - rpm[0]);
+                text += &element(&name, "RPM", [x, y], &format!("texture = {name}.png\nthreshold = {past}\n"));
+            }
+        }
+        Kind::Lamp { texture, lit, rpm } => {
+            let (lamp, lit) =
+                (Image::decode(texture), Image::decode(lit).resized(texture.width as usize, texture.height as usize));
+            let half = [0, 0, lamp.w / 2, lamp.h];
+            let right = [lamp.w / 2, 0, lamp.w / 2, lamp.h];
+            let mut on = lamp.crop(right);
+            on.px.iter_mut().zip(&lit.crop(right).px).for_each(|(c, e)| *c = c.saturating_add(*e));
+            let dim = |c: u8| (f32::from(c) * LAMP_OFF).round() as u8;
+            let off = lamp.crop(half).map(|_, _, t| [dim(t[0]), dim(t[1]), dim(t[2]), 255]);
+            for (state, sprite, when) in [("on", on.opaque(255), "threshold"), ("off", off, "limit")] {
+                let name = format!("{node}_{state}");
+                sheet.sprite(&name, &sprite);
+                text += &element(&name, "RPM", [0, 0], &format!("texture = {name}.png\n{when} = {rpm}\n"));
+            }
+        }
+    }
+    text
+}
+
+/// The bar graph's bars: each value of `mask` under 255 with its rect and the texels of `bars` it covers (the rest
+/// clear). The mask is stretched to the bars' size.
+fn bar_sprites(bars: &Image, mask: &Image) -> Vec<(u8, [usize; 4], Image)> {
+    let mask = mask.resized(bars.w, bars.h);
+    let mut rects: BTreeMap<u8, [usize; 4]> = BTreeMap::new();
+    for y in 0..bars.h {
+        for x in 0..bars.w {
+            let value = mask.at(x, y)[0];
+            if value < 255 {
+                let r = rects.entry(value).or_insert([x, y, x, y]);
+                *r = [r[0].min(x), r[1].min(y), r[2].max(x), r[3].max(y)];
+            }
+        }
+    }
+    rects
+        .into_iter()
+        .map(|(value, [x0, y0, x1, y1])| {
+            let rect = [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
+            let sprite = bars.crop(rect).map(|i, j, t| {
+                let own = mask.at(x0 + i, y0 + j)[0] == value;
+                [t[0], t[1], t[2], if own { 255 } else { 0 }]
+            });
+            (value, rect, sprite)
+        })
+        .collect()
+}
+
+/// The file of a display's night glow map.
+fn glow_file(key: &str) -> String {
+    file(&format!("{key}_em"))
+}
+
+/// Writes the pack of `displays` under `root/Plugins/RBRHUD/gauges/<car>/` (the folder beside `Cars/`, where the
+/// viewer reads a car's gauges from): a config per display, the sprite sheet and the glow maps.
+pub fn write(root: &Path, car: &str, displays: &[Display]) -> Result<(), String> {
     let folder = root.join(rbr_formats::rbrhud::GAUGES).join(car);
     let textures = folder.join("textures");
     let variant = folder.join(rbr_formats::rbrhud::DEFAULT_VARIANT);
-    fs::create_dir_all(&textures).and(fs::create_dir_all(&variant)).map_err(|e| e.to_string())?;
-    let write = |path: std::path::PathBuf, bytes: &[u8]| {
-        fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
-    };
-    let atlas = atlas(sources)?;
-    write(textures.join("atlas.ini"), atlas.ini.as_bytes())?;
-    write(textures.join("atlas.dds"), &atlas.image.dds())?;
-    write(textures.join(glow_file(DIALS)), &dials_glow(sources).dds())?;
-    write(textures.join(glow_file(LAMPS)), &lamps_glow(sources).dds())?;
-    write(textures.join(glow_file(GEAR)), &Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [255, 255, 255, 0]).dds())?;
-    for (i, text) in configs(layout, sources.config).iter().enumerate() {
-        write(variant.join(format!("config{}.ini", i + 1)), text.as_bytes())?;
+    if displays.is_empty() && !variant.exists() {
+        return Ok(());
     }
-    Ok(())
+    fs::create_dir_all(&textures).and(fs::create_dir_all(&variant)).map_err(|e| e.to_string())?;
+    // An earlier conversion's configs, which may name textures the car no longer has.
+    for entry in fs::read_dir(&variant).map_err(|e| e.to_string())?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name.starts_with("config") && name.ends_with(".ini") {
+            fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
+        }
+    }
+    if displays.is_empty() {
+        return Ok(());
+    }
+    let write = |path: PathBuf, bytes: &[u8]| fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()));
+    let (mut sheet, mut fonts) = (Sheet::new(), String::new());
+    for (i, display) in displays.iter().enumerate() {
+        write(variant.join(format!("config{}.ini", i + 1)), config(display, &mut sheet, &mut fonts).as_bytes())?;
+        if let Some(glow) = display.glow() {
+            write(textures.join(glow_file(&display.key())), &glow.dds())?;
+        }
+    }
+    let ini = format!("[MAIN]\ntexture=textures/atlas.dds\n[Objects]\n{}{fonts}", sheet.ini);
+    write(textures.join("atlas.ini"), ini.as_bytes())?;
+    write(textures.join("atlas.dds"), &sheet.image.dds())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::texture::Format;
-    use rbr_formats::rbrhud::{Atlas as HudAtlas, Condition, Config, Kind};
+    use crate::car::Instance;
+    use rbr_formats::rbrhud::{Atlas as HudAtlas, Config, Kind as HudKind};
 
     const CONFIG: &str = r#"<interior_config>
-    <displays type="analog">
-        <display value="tach" node="int_needle_tach" min_value="0.0" max_value="12.0" factor="0.00955" long_way="1"/>
-    </displays>
     <displays type="digital">
-        <display value="gear" node="int_indicator_gear" font="int_gear" num_chars="1"/>
+        <display value="tach" node="int_digi_revs" font="int_digi_speed" num_chars="4" factor="9.550" />
         <display value="speed" node="int_digi_speed" font="int_digi_speed" num_chars="3" factor="3.6" />
+        <display value="gear" node="int_indicator_gear" font="int_gear" num_chars="1" />
+    </displays>
+    <displays type="motec">
+        <display value="tach" node="int_digi_tach" factor="0.00955" min_alpha="198" max_alpha="239" min_value="0.0" max_value="11.0"/>
     </displays>
     <displays type="indicator_light">
-        <display value="tach" node="int_indicator_shift_1" factor="0.00955" cond_min="7.9" cond_max="15.0"/>
         <display value="tach" node="int_indicator_limit" factor="0.00955" cond_min="8.9" cond_max="15.0"/>
     </displays>
 </interior_config>"#;
 
     /// A texture of `width` x `height` made of one DXT block repeated: black, as a block of zeros.
     fn blank(format: Format, width: u32, height: u32) -> Texture {
-        let block = if format == Format::Dxt1 { 8 } else { 16 };
-        let data = vec![0; (width / 4 * (height / 4)) as usize * block];
-        Texture { name: String::new(), width, height, format, levels: 1, data }
+        let size = match format {
+            Format::Dxt1 => width * height / 2,
+            Format::Dxt5 | Format::U8 => width * height,
+        };
+        Texture { name: String::new(), width, height, format, levels: 1, data: vec![0; size as usize] }
     }
 
-    fn sources<'a>(textures: &'a [Texture; 5], font: &'a [u8]) -> Sources<'a> {
-        Sources {
-            dials: &textures[0],
-            dials_on: &textures[1],
-            indicator: &textures[2],
-            indicator_on: &textures[3],
-            digits: &textures[4],
-            gear_font: font,
-            config: CONFIG,
-        }
+    fn part(node: &str, material: &str) -> Part {
+        let instance = Instance {
+            material: material.into(),
+            joint: None,
+            source: String::new(),
+            positions: Vec::new(),
+            normals: Vec::new(),
+            uv: Vec::new(),
+            uv2: Vec::new(),
+            triangles: Vec::new(),
+        };
+        Part { name: node.into(), transform: crate::mesh::IDENTITY, instances: vec![instance] }
     }
 
-    fn textures() -> [Texture; 5] {
-        [
-            blank(Format::Dxt1, 1024, 1024),
-            blank(Format::Dxt1, 512, 512),
-            blank(Format::Dxt1, 128, 128),
-            blank(Format::Dxt1, 128, 128),
-            blank(Format::Dxt5, 64, 512),
-        ]
+    fn material(id: &str, textures: &[(&str, &str)]) -> (String, Material) {
+        let textures = textures.iter().map(|(k, v)| (k.to_string(), format!("#{v}"))).collect();
+        (id.into(), Material { id: id.into(), shader: String::new(), textures, constants: BTreeMap::new() })
+    }
+
+    /// The scene of a 306-like dash (no `int_digi_revs` node) and its displays' textures: a mask whose values 200 and
+    /// 230 are two bars.
+    fn displays() -> Vec<Display> {
+        let scene = [
+            part("int_digi_speed", "digital speedometer"),
+            part("int_indicator_gear", "gear indicator"),
+            part("int_digi_tach", "digital tachometer"),
+            part("int_indicator_limit", "limit lights"),
+        ];
+        let materials = BTreeMap::from([
+            material("digital speedometer", &[("TEmissiveMap", "int_digi_speed.tga")]),
+            material("gear indicator", &[("TEmissiveMap", "int_gear.tga")]),
+            material(
+                "digital tachometer",
+                &[
+                    ("TDiffuseAlphaMap", "int_digi_tach.tga"),
+                    ("TDiffuseAlphaMap_2", "int_digi_tach_bars.tga"),
+                    ("TAlphaMaskMap", "int_digi_tach_bars_alpha_mask.tga"),
+                    ("TEmissiveMap", "int_digi_tach_on.tga"),
+                ],
+            ),
+            material(
+                "limit lights",
+                &[("TDiffuseAlphaMap", "int_indicator.tga"), ("TEmissiveMap", "int_indicator_on.tga")],
+            ),
+        ]);
+        let find = |name: &str| {
+            Ok(match name {
+                "int_digi_speed.tga" => blank(Format::Dxt5, 64, 512),
+                "int_gear.tga" => blank(Format::Dxt1, 64, 512),
+                "int_digi_tach_bars_alpha_mask.tga" => {
+                    let mut mask = blank(Format::U8, 16, 8);
+                    mask.data.fill(255);
+                    mask.data[2 * 16 + 3..2 * 16 + 6].fill(200);
+                    mask.data[5 * 16 + 10] = 230;
+                    mask
+                }
+                "int_digi_tach_on.tga" => blank(Format::Dxt1, 8, 4),
+                "int_indicator.tga" | "int_indicator_on.tga" => blank(Format::Dxt1, 16, 16),
+                _ => blank(Format::Dxt1, 16, 8),
+            })
+        };
+        read(CONFIG, &scene, &materials, find).unwrap()
     }
 
     #[test]
-    fn the_displays_of_the_config_are_read() {
-        assert_eq!(attribute(CONFIG, "value=\"gear\"", "font"), Some("int_gear"));
-        assert_eq!(number(CONFIG, "node=\"int_indicator_shift_1\"", "cond_min"), Some(7.9));
-        assert_eq!(attribute(CONFIG, "node=\"nothing\"", "cond_min"), None);
+    fn the_displays_on_nodes_of_the_scene_are_read() {
+        let displays = displays();
+        let nodes: Vec<&str> = displays.iter().map(|d| d.node.as_str()).collect();
+        // `int_digi_revs` has no node in the scene.
+        assert_eq!(nodes, ["int_digi_speed", "int_indicator_gear", "int_digi_tach", "int_indicator_limit"]);
+        assert!(matches!(displays[0].kind, Kind::Digits { value: Value::Speed, chars: 3, .. }));
+        assert!(matches!(displays[1].kind, Kind::Digits { value: Value::Gear, chars: 1, .. }));
+        assert_eq!(
+            (displays[2].material.as_str(), displays[2].key().as_str()),
+            ("digital tachometer", "gauge_int_digi_tach")
+        );
+        // The game's thousands of rpm, over `factor`, are rad/s.
+        let Kind::Bars { rpm, alpha, .. } = &displays[2].kind else { panic!("not bars") };
+        assert!(rpm[0] == 0.0 && (rpm[1] - 11_000.0).abs() < 2.0 && *alpha == [198.0, 239.0], "{rpm:?}");
+        let Kind::Lamp { rpm, .. } = &displays[3].kind else { panic!("not a lamp") };
+        assert!((rpm - 8900.0).abs() < 2.0, "{rpm}");
+        // Only the LCD's digits (a font with an alpha) show the face behind them.
+        assert_eq!(displays.iter().map(Display::opacity).collect::<Vec<_>>(), [true, false, false, false]);
+        assert_eq!(Image::decode(&blank(Format::Dxt1, 4, 4)).w, 4);
+        assert_eq!(displays[0].base().w, 3 * CELL);
     }
 
     #[test]
     fn the_pack_reads_as_an_rbrhud_pack() {
-        let [dials, gear, lamps] = configs(&CME, CONFIG).map(|text| Config::parse(&text).expect("a config"));
-        // No needle: the model's own mesh is turned (`crate::needles`).
-        assert!(!dials.elements.iter().any(|e| matches!(e.kind, Kind::Rotating(_))));
-        // The speed digits: right-justified in the display's box, three cells wide.
-        let speed = dials.elements.iter().find(|e| e.name == "speed").unwrap();
-        let Kind::Number(number) = &speed.kind else { panic!("not a number") };
-        assert_eq!((speed.data.as_deref(), number.justification.as_str()), (Some("SpeedKPH"), "Right"));
-        assert!(speed.x <= CME.display[2] && speed.x - 3.0 * 64.0 * speed.scale >= CME.display[0]);
-        // The gear: reverse is the drive's gear 0, neutral 1, first 2.
-        let shows = |sprite: &str| gear.elements.iter().find(|e| e.texture.as_deref() == Some(sprite)).unwrap();
-        assert_eq!(shows("GearR.png").condition, Condition { equal: Some(0.0), ..Default::default() });
-        assert_eq!(shows("GearN.png").condition.equal, Some(1.0));
-        assert_eq!(shows("Gear1.png").condition.equal, Some(2.0));
-        // The lamps: lit over the config's engine speed, dimmed under it.
-        let lamp = |sprite: &str| lamps.elements.iter().find(|e| e.texture.as_deref() == Some(sprite)).unwrap();
-        assert_eq!(lamp("ShiftOn.png").condition.threshold, Some(7900.0));
-        assert_eq!(lamp("ShiftOff.png").condition.limit, Some(7900.0));
-        assert_eq!((lamp("LimitOn.png").condition.threshold, lamp("LimitOn.png").y), (Some(8900.0), 0.0));
-        assert!(!lamp("ShiftOn.png").condition.holds(7000.0) && lamp("ShiftOn.png").condition.holds(8000.0));
-        assert!(lamp("ShiftOff.png").condition.holds(7000.0) && !lamp("ShiftOff.png").condition.holds(8000.0));
-    }
-
-    #[test]
-    fn every_sprite_a_config_names_is_in_the_sheet() {
-        let textures = textures();
-        let font = vec![0; GEAR_CELL * GEAR_CELL * 10 * 4];
-        let sheet = atlas(&sources(&textures, &font)).unwrap();
-        let parsed = HudAtlas::parse(&sheet.ini);
-        for text in configs(&CME, CONFIG) {
-            for element in Config::parse(&text).unwrap().elements {
+        let displays = displays();
+        let (mut sheet, mut fonts) = (Sheet::new(), String::new());
+        let configs: Vec<Config> =
+            displays.iter().map(|d| Config::parse(&config(d, &mut sheet, &mut fonts)).expect("a config")).collect();
+        let atlas = HudAtlas::parse(&format!("[MAIN]\ntexture=textures/atlas.dds\n[Objects]\n{}{fonts}", sheet.ini));
+        for config in &configs {
+            for element in &config.elements {
                 if let Some(name) = &element.texture {
-                    assert!(parsed.sprite(name).is_some(), "{name}");
+                    let [x, y, w, h] = atlas.sprite(name).unwrap_or_else(|| panic!("{name} is not on the sheet"));
+                    assert!((x + w) as usize <= sheet.image.w && (y + h) as usize <= sheet.image.h, "{name}");
                 }
             }
         }
-        for (name, [x, y, w, h]) in &parsed.sprites {
-            assert!((x + w) as usize <= sheet.image.w && (y + h) as usize <= sheet.image.h, "{name} is off the sheet");
-        }
-        // No two sprites share texels.
-        let boxes: Vec<[u32; 4]> = parsed.sprites.iter().map(|(_, r)| *r).collect();
-        for (i, a) in boxes.iter().enumerate() {
-            for b in &boxes[i + 1..] {
-                assert!(a[0] + a[2] <= b[0] || b[0] + b[2] <= a[0] || a[1] + a[3] <= b[1] || b[1] + b[3] <= a[1]);
-            }
-        }
-        let digits = parsed.font("Digits.png").expect("the speed font");
-        assert_eq!(digits.glyph('0'), Some([0, 0, 64, 51]));
-        assert_eq!(digits.glyph('9'), Some([9 * 64, 0, 64, 51]));
+        // The speed: right-justified at the texture's right edge, in the font's digits.
+        let speed = &configs[0].elements[0];
+        let HudKind::Number(number) = &speed.kind else { panic!("not a number") };
+        assert_eq!((speed.data.as_deref(), number.justification.as_str(), speed.x), (Some("SpeedKPH"), "Right", 192.0));
+        assert_eq!(atlas.font(&number.font).and_then(|f| f.glyph('9')).map(|g| g[2..].to_vec()), Some(vec![64, 64]));
+        // The gear: reverse is the drive's gear 0 (the font's last cell), neutral 1 (its first), first 2.
+        let gear: Vec<(Option<&str>, Option<f32>)> =
+            configs[1].elements.iter().map(|e| (e.texture.as_deref(), e.condition.equal)).collect();
+        assert_eq!(gear.len(), 10);
+        assert_eq!(
+            &gear[..3],
+            [
+                (Some("int_indicator_gear_0.png"), Some(0.0)),
+                (Some("int_indicator_gear_1.png"), Some(1.0)),
+                (Some("int_indicator_gear_2.png"), Some(2.0))
+            ]
+        );
+        // The bars: each at its rect, lit past its share of the range.
+        let bars = &configs[2].elements;
+        assert_eq!(bars.len(), 2);
+        assert_eq!((bars[0].x, bars[0].y, bars[1].x, bars[1].y), (3.0, 2.0, 10.0, 5.0));
+        let past = |e: &rbr_formats::rbrhud::Element| e.condition.threshold.unwrap();
+        assert!((past(&bars[0]) - 2.0 / 41.0 * 11_000.0).abs() < 5.0 && past(&bars[1]) > past(&bars[0]));
+        // The lamp: lit over its engine speed, dimmed under it.
+        let lamp = &configs[3].elements;
+        assert!(lamp[0].condition.holds(9000.0) && !lamp[0].condition.holds(8000.0));
+        assert!(lamp[1].condition.holds(8000.0) && !lamp[1].condition.holds(9000.0));
+        // An LCD has no glow map, the others do.
+        assert_eq!(configs.iter().map(|c| c.emissive_mask.is_some()).collect::<Vec<_>>(), [false, true, true, true]);
     }
 
     #[test]
-    fn the_gear_font_gives_neutral_the_digits_and_a_reverse() {
-        // A font whose cell `i` of the flipped strip holds a red pixel at its top left: file row 319 - 32 i.
-        let mut font = vec![0; GEAR_CELL * GEAR_CELL * 10 * 4];
-        for i in 0..10 {
-            let row = 319 - GEAR_CELL * i;
-            font[(row * GEAR_CELL + 5) * 4 + 2] = 153;
-        }
-        let glyphs = gear_glyphs(&font).unwrap();
-        let names: Vec<&str> = glyphs.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(
-            names,
-            ["GearN", "Gear1", "Gear2", "Gear3", "Gear4", "Gear5", "Gear6", "Gear7", "Gear8", "Gear9", "GearR"]
-        );
-        assert!(glyphs.iter().all(|(_, g)| (g.w, g.h) == (GEAR_SIZE[0], GEAR_SIZE[1])));
-        // Every digit has its pixel, stretched, in red.
-        let lit = |g: &Image| {
-            g.px.chunks_exact(4).filter(|t| t[3] > 0).all(|t| t[..3] == GEAR_RED)
-                && g.px.chunks_exact(4).any(|t| t[3] > 0)
-        };
-        assert!(glyphs[..10].iter().all(|(_, g)| lit(g)));
-        // The reverse takes only the lower left of the 6: its pixel is at the top, so nothing is left.
-        assert!(glyphs[10].1.px.chunks_exact(4).all(|t| t[3] == 0));
-        assert!(gear_glyphs(&font[..100]).is_err());
+    fn a_bar_is_the_texels_of_one_mask_value() {
+        let bars = Image::filled(4, 2, [10, 20, 30, 255]);
+        let mut mask = Image::filled(4, 2, [255; 4]);
+        mask.set(1, 0, [7; 4]);
+        mask.set(2, 1, [7; 4]);
+        let sprites = bar_sprites(&bars, &mask);
+        assert_eq!(sprites.len(), 1);
+        let (value, rect, sprite) = &sprites[0];
+        assert_eq!((*value, *rect), (7, [1, 0, 2, 2]));
+        assert_eq!((sprite.at(0, 0), sprite.at(1, 0)), ([10, 20, 30, 255], [10, 20, 30, 0]));
+    }
+
+    #[test]
+    fn an_led_font_keeps_its_hue_at_full_strength() {
+        // A DXT1 block of one colour: red 0x9800 (152, 0, 0) in both end points.
+        let mut font = blank(Format::Dxt1, 4, 40);
+        font.data = [0x00, 0x98, 0x00, 0x98, 0, 0, 0, 0].repeat(10);
+        let glyphs = glyphs(&font);
+        assert_eq!(glyphs.len(), CELLS);
+        assert!(glyphs.iter().all(|g| (g.w, g.h) == (CELL, CELL) && g.at(5, 5) == [255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn the_sheet_wraps_its_rows_without_overlap() {
+        let mut sheet = Sheet::new();
+        let rects: Vec<[usize; 4]> = (0..5).map(|_| sheet.place(&Image::filled(400, 30, [1; 4]))).collect();
+        assert_eq!(rects[..3], [[0, 0, 400, 30], [400, 0, 400, 30], [0, 30, 400, 30]]);
+        assert_eq!((sheet.image.w, sheet.image.h), (SHEET, 92));
     }
 
     #[test]
@@ -494,19 +633,5 @@ mod tests {
         ramp.set(1, 0, [200; 4]);
         let wide = ramp.resized(8, 1);
         assert!(wide.px.chunks_exact(4).map(|t| t[0]).is_sorted() && wide.at(0, 0)[0] == 0 && wide.at(7, 0)[0] == 200);
-    }
-
-    #[test]
-    fn the_lamps_glow_where_the_lit_sprite_is_drawn() {
-        // A white lit map: the mask is its texels scaled, and as bright on the unlit half, where the lit sprite goes.
-        let mut white = blank(Format::Dxt1, 128, 128);
-        white.data = [0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0].repeat(32 * 32);
-        let mut textures = textures();
-        textures[3] = white;
-        let font = vec![0; GEAR_CELL * GEAR_CELL * 10 * 4];
-        let mask = lamps_glow(&sources(&textures, &font));
-        let level = (255.0 * LAMP_GLOW).round() as u8;
-        assert_eq!((mask.w, mask.h), (128, 128));
-        assert_eq!((mask.at(6, 10), mask.at(70, 10)), ([level, level, level, 0], [level, level, level, 0]));
     }
 }

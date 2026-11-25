@@ -93,8 +93,8 @@ enum Source {
     Generic(&'static str, String),
     /// A texture of the car's interior file (`cars/interiors/models/cme/int_cme.pssg`).
     Interior(String),
-    /// The gear display's base, black: the gauges draw the digit on it (`gauges::gear_base`).
-    Gear,
+    /// A working display's own texture, which the gauges make and write (`gauges::Display::texture`).
+    Made,
 }
 
 impl Source {
@@ -104,7 +104,7 @@ impl Source {
         let (name, class) = match self {
             Source::Livery(name) | Source::Interior(name) => (name.as_str(), "main"),
             Source::LiveryClass(class, name) | Source::Generic(class, name) => (name.as_str(), *class),
-            Source::Gear => ("gear", "main"),
+            Source::Made => ("made", "main"),
         };
         let stem = stem(name);
         if class == "main" {
@@ -227,18 +227,16 @@ const INTERIOR_OCCLUSION: f32 = 0.5;
 /// `_occ`, `_sp`, on the atlas's UVs; the shared `int_gen_sp` is a 32 texel constant) and an occlusion its
 /// `OcclusionMapScale` does not turn off. The alpha and netting shaders' alpha is their opacity. The carbon fibre's UVs
 /// lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`TCarbonDiffuseMap`) repeated
-/// `CarbonUVRepeat` times over them, as DiRT's shader does. The gear display (`lcd_text`, a texture of numerals the
-/// game scrolls) is a black texture of its own which the gauges draw the digit on, for a car whose gauges are measured
-/// ([`gauges::layout`]); the other LCDs and the glass are not drawn. The mirrors' glass (which the game draws as a
-/// texture of what is behind) is the renderer's glass class on a flat texel: it shows the surroundings by the part's
-/// name (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
-fn interior_style(car: &str, m: &Material, gauged: bool) -> Option<Style> {
+/// `CarbonUVRepeat` times over them, as DiRT's shader does. The displays' digits (`lcd_text`, a font the game scrolls)
+/// are not drawn by their material, as a working display's faces take a texture of their own ([`gauges`]); nor is the
+/// glass. The mirrors' glass (which the game draws as a texture of what is behind) is the renderer's glass class on a
+/// flat texel: it shows the surroundings by the part's name (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
+fn interior_style(car: &str, m: &Material) -> Option<Style> {
     let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#').to_owned());
     let own = |input: &str| bound(input).filter(|t| !t.starts_with("int_gen_")).map(Source::Interior);
     let style = |key: String, texture| Style::new("CarTextureNoDirt", key, texture);
     match m.shader.as_str() {
-        "interior_windscreen.fx" => None,
-        "lcd_text.fx" => (gauged && m.id == "gear indicator").then(|| style("int_gear".into(), Source::Gear)),
+        "interior_windscreen.fx" | "lcd_text.fx" => None,
         "mirror.fx" => {
             Some(Style { shader: "CarGlass", ..style("int_mirror".into(), Source::Interior("int_gen_sp.tga".into())) })
         }
@@ -278,9 +276,9 @@ fn interior_key(car: &str, texture: &str) -> String {
 /// The interior's materials' styles: one per drawn texture, with every map any of its materials gives it (the dash,
 /// doors, seats, cage, levers and wheel read one atlas, `int_<car>_main`, whatever their shader, and the Escort's chrome
 /// turns its occlusion off).
-fn interior_styles(car: &str, materials: &BTreeMap<String, Material>, gauged: bool) -> BTreeMap<String, Style> {
+fn interior_styles(car: &str, materials: &BTreeMap<String, Material>) -> BTreeMap<String, Style> {
     let styles: Vec<(&String, Style)> =
-        materials.values().filter_map(|m| Some((&m.id, interior_style(car, m, gauged)?))).collect();
+        materials.values().filter_map(|m| Some((&m.id, interior_style(car, m)?))).collect();
     let mut merged: BTreeMap<&str, Style> = BTreeMap::new();
     for (_, style) in &styles {
         let first = &mut merged.entry(style.key.as_str()).or_insert_with(|| style.clone()).maps;
@@ -652,14 +650,21 @@ impl Model<'_> {
             .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
             .flat_map(all)
             .collect();
-        let mut out = split("i_internal", faces(drawn.iter().copied(), &self.frame, self.interior, |_| true));
+        // The displays last: the renderer draws a car's shaders in the order their first faces come, and an LCD's clear
+        // digits over a blended face (the Mini's `interior_alpha` dials) must come after it.
+        let displays_last = |mut faces: Vec<Face>| {
+            faces.sort_by_key(|f| self.interior.get(&f.material).is_some_and(|s| s.texture == Source::Made));
+            faces
+        };
+        let mut out =
+            split("i_internal", displays_last(faces(drawn.iter().copied(), &self.frame, self.interior, |_| true)));
         // Seen from outside, the cage's roof tubes and the lining at the roof and the sides lie in the body's paint
         // (DiRT never draws this scene outside) and show through it as grey bands along the roof edge.
         let clipped: Vec<_> =
             drawn.iter().map(|(i, m)| (c.clip.map_or_else(|| (*i).clone(), |clip| within_body(i, clip)), *m)).collect();
         out.extend(split(
             "e_internal",
-            faces(clipped.iter().map(|(i, m)| (i, *m)), &self.frame, self.interior, |_| true),
+            displays_last(faces(clipped.iter().map(|(i, m)| (i, *m)), &self.frame, self.interior, |_| true)),
         ));
         for (node, name) in MIRRORS {
             for p in c.scene.iter().filter(|p| p.name == node) {
@@ -1072,7 +1077,7 @@ impl Library {
             Source::LiveryClass(short, name) => (livery(&format!("_{short}")), name),
             Source::Generic(short, name) => (self.generics.join(format!("car_gen_{short}_high.pssg")), name),
             Source::Interior(name) => (self.interior_file(), name),
-            Source::Gear => return Err("the gear display's base is made, not read".into()),
+            Source::Made => return Err("a display's texture is made, not read".into()),
         };
         let cached = self.files.borrow().get(&path).cloned();
         let textures = match cached {
@@ -1099,9 +1104,6 @@ impl Library {
     /// A style's texture as the `.dds` the car reads: with the occlusion baked in and the specular as its alpha where
     /// its maps have them, else its blocks as they are.
     fn diffuse(&self, style: &Style) -> Result<Vec<u8>, String> {
-        if style.texture == Source::Gear {
-            return Ok(gauges::gear_base());
-        }
         let texture = self.find(&style.texture)?;
         let plane = |map: &Option<(Source, usize, f32)>| {
             map.as_ref()
@@ -1197,13 +1199,26 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         path if path.exists() => Some(Pssg::read(&path)?),
         _ => None,
     };
-    let scene = interior.as_ref().map(car::interior).transpose()?;
+    let mut scene = interior.as_ref().map(car::interior).transpose()?;
     let config = fs::read_to_string(library.interior_file().with_extension("xml")).unwrap_or_default();
-    let gauges = gauges::layout(car).filter(|_| scene.is_some());
     let exterior: BTreeMap<String, Style> =
         material::read(&pssg).values().filter_map(|m| Some((m.id.clone(), exterior_style(car, m)?))).collect();
-    let inside =
-        interior.as_ref().map_or_else(BTreeMap::new, |p| interior_styles(car, &material::read(p), gauges.is_some()));
+    let materials = interior.as_ref().map(material::read).unwrap_or_default();
+    let mut inside = interior_styles(car, &materials);
+    let displays = match &scene {
+        Some(scene) => {
+            gauges::read(&config, scene, &materials, |name| library.find(&Source::Interior(name.to_owned())))?
+        }
+        None => Vec::new(),
+    };
+    // A working display's faces take its own texture, which its config redraws.
+    for display in &displays {
+        let key = display.key();
+        let instances = scene.iter_mut().flatten().filter(|p| p.name == display.node).flat_map(|p| &mut p.instances);
+        instances.filter(|i| i.material == display.material).for_each(|i| i.material.clone_from(&key));
+        let style = Style::new("CarTextureNoDirt", key.clone(), Source::Made);
+        inside.insert(key, Style { opacity: display.opacity(), ..style });
+    }
     let needles = interior.as_ref().map(|p| needles::read(p, &config)).unwrap_or_default();
     let lit_map = library.find(&Source::Livery(format!("{car}_lights_on.tga"))).is_ok();
     let lit = lit_styles(car, &exterior, lit_map);
@@ -1234,7 +1249,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         .filter(|s| used.contains(s.key.as_str()))
         .map(|s| (s.key.as_str(), s))
         .collect();
-    for (key, style) in &styles {
+    for (key, style) in styles.iter().filter(|(_, s)| s.texture != Source::Made) {
         write(textures.join(file(key)), &library.diffuse(style)?)?;
         if let Some(emissive) = &style.maps.emissive {
             write(textures.join(glow_file(key)), &library.find(emissive)?.dds())?;
@@ -1250,19 +1265,10 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     for (source, crumpled) in normals {
         write(textures.join(source.file()), &car_maps::normal(&library.find(source)?, crumpled))?;
     }
-    if let Some(layout) = gauges {
-        let find = |name: &str| library.find(&Source::Interior(name.to_owned()));
-        let sources = gauges::Sources {
-            dials: &find(&format!("int_{car}_dials.tga"))?,
-            dials_on: &find(&format!("int_{car}_dials_on.tga"))?,
-            indicator: &find("int_indicator.tga")?,
-            indicator_on: &find("int_indicator_on.tga")?,
-            digits: &find("int_digi_speed.tga")?,
-            gear_font: &gauges::gear_font(data, &config)?,
-            config: &config,
-        };
-        gauges::write(out, &options.name, layout, &sources)?;
+    for display in &displays {
+        write(textures.join(file(&display.key())), &display.texture())?;
     }
+    gauges::write(out, &options.name, &displays)?;
 
     let name = &options.name;
     let model_path = folder.join(format!("{name}.sgc"));
@@ -1560,7 +1566,7 @@ mod tests {
             ("TOcclusionMap", "int_cme_occ.tga"),
             ("TSpecularMap", "int_cme_sp.tga"),
         ];
-        let style = |m: &Material| interior_style("cme", m, true);
+        let style = |m: &Material| interior_style("cme", m);
         let leather = style(&material("Leather", "interior.fx", &atlas, &[("OcclusionMapScale", 1.0)])).unwrap();
         assert_eq!((leather.shader, leather.key.as_str(), leather.opacity), ("CarTextureNoDirt", "int_main", false));
         assert_eq!(leather.maps.normal, Some(Source::Interior("int_cme_nm.tga".into())));
@@ -1580,11 +1586,8 @@ mod tests {
         assert!(weave.key == "int_carbon_diff" && weave.repeat == 300.0 && weave.maps.occlusion.is_none());
         assert_eq!(style(&material("mirror", "mirror.fx", &[], &[])).map(|s| s.shader), Some("CarGlass"));
         assert!(style(&material("interior glass windows", "interior_windscreen.fx", &[], &[])).is_none());
+        // The digits are drawn by the displays' own textures (`gauges`), not by the font.
         assert!(style(&material("digital speedometer", "lcd_text.fx", &[], &[])).is_none());
-        // The gear display is drawn only for a car whose gauges are measured.
-        let gear = material("gear indicator", "lcd_text.fx", &[], &[]);
-        assert_eq!(style(&gear).map(|s| (s.key, s.texture)), Some(("int_gear".to_owned(), Source::Gear)));
-        assert!(interior_style("cme", &gear, false).is_none());
     }
 
     #[test]
@@ -1594,7 +1597,7 @@ mod tests {
             ("Chrome".to_owned(), material("Chrome", "interior.fx", &atlas, &[("OcclusionMapScale", 0.0)])),
             ("Matt".to_owned(), material("Matt", "interior.fx", &atlas, &[("OcclusionMapScale", 1.0)])),
         ]);
-        let styles = interior_styles("cme", &materials, false);
+        let styles = interior_styles("cme", &materials);
         assert_eq!(styles["Chrome"], styles["Matt"]);
         assert!(styles["Chrome"].maps.occlusion.is_some());
     }

@@ -13,19 +13,19 @@ use std::rc::Rc;
 pub enum Format {
     Dxt1,
     Dxt5,
+    /// One byte a texel (the cars' bar graph masks, `u8`).
+    U8,
 }
 
 impl Format {
-    fn block_bytes(self) -> usize {
-        match self {
-            Format::Dxt1 => 8,
-            Format::Dxt5 => 16,
-        }
-    }
-
     /// Bytes of one mip level.
     fn level_bytes(self, width: u32, height: u32) -> usize {
-        (width as usize).div_ceil(4).max(1) * (height as usize).div_ceil(4).max(1) * self.block_bytes()
+        let blocks = (width as usize).div_ceil(4).max(1) * (height as usize).div_ceil(4).max(1);
+        match self {
+            Format::Dxt1 => blocks * 8,
+            Format::Dxt5 => blocks * 16,
+            Format::U8 => width as usize * height as usize,
+        }
     }
 }
 
@@ -50,14 +50,15 @@ impl Texture {
         Texture::from_node_in(node, false)
     }
 
-    /// [`Texture::from_node`], also taking the `_srgb` formats when `srgb` (the cars' liveries: the same blocks, tagged
-    /// for sampling as sRGB).
-    fn from_node_in(node: Node, srgb: bool) -> Option<Texture> {
+    /// [`Texture::from_node`], also taking the car files' formats when `car`: the `_srgb` ones (the liveries: the same
+    /// blocks, tagged for sampling as sRGB) and `u8` (the interiors' bar graph masks).
+    fn from_node_in(node: Node, car: bool) -> Option<Texture> {
         let format = match node.str("texelFormat")? {
             "dxt1" => Format::Dxt1,
             "dxt5" => Format::Dxt5,
-            "dxt1_srgb" if srgb => Format::Dxt1,
-            "dxt5_srgb" if srgb => Format::Dxt5,
+            "dxt1_srgb" if car => Format::Dxt1,
+            "dxt5_srgb" if car => Format::Dxt5,
+            "u8" if car => Format::U8,
             _ => return None,
         };
         let (width, height) = (node.u32("width")?, node.u32("height")?);
@@ -81,6 +82,9 @@ impl Texture {
 
     /// A DDS file of every level held.
     pub fn dds(&self) -> Vec<u8> {
+        if self.format == Format::U8 {
+            return rbr_formats::dds::rgba8_file(self.width, self.height, &self.rgba());
+        }
         let mut out = b"DDS ".to_vec();
         let mips = self.levels > 1;
         let fourcc: &[u8; 4] = if self.format == Format::Dxt1 { b"DXT1" } else { b"DXT5" };
@@ -105,11 +109,15 @@ impl Texture {
         out
     }
 
-    /// The base level as RGBA8.
+    /// The base level as RGBA8 (a `u8` texture's byte in every channel).
     pub fn rgba(&self) -> Vec<u8> {
         let format = match self.format {
             Format::Dxt1 => texpresso::Format::Bc1,
             Format::Dxt5 => texpresso::Format::Bc3,
+            Format::U8 => {
+                let texels = &self.data[..self.format.level_bytes(self.width, self.height)];
+                return texels.iter().flat_map(|&v| [v; 4]).collect();
+            }
         };
         let (w, h) = (self.width as usize, self.height as usize);
         let mut out = vec![0; w * h * 4];
