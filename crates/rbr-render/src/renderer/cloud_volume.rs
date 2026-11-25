@@ -6,6 +6,7 @@
 use super::pipelines::{texture_entry, TEXTURE};
 use super::{depth_binding, Context};
 use crate::atmosphere::{Atmosphere, Clouds};
+use crate::gpu_util::{self, FILTERING, UNIFORM};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
 use std::cell::Cell;
@@ -106,15 +107,7 @@ pub(super) fn shadow_params(eye: Vec3, shown: bool) -> [f32; 4] {
 /// `cloud_volume.wgsl`).
 pub(super) fn shadow_target(device: &wgpu::Device) -> (wgpu::TextureView, wgpu::Sampler) {
     let view = texture(device, SHADOW_FORMAT, (SHADOW_SIZE, SHADOW_SIZE));
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("cloud shadow"),
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
+    let sampler = gpu_util::linear_clamp(device, "cloud shadow");
     (view, sampler)
 }
 
@@ -324,24 +317,8 @@ impl CloudVolume {
         .into_iter()
         .chain(shadow);
         for (label, view, pipeline, first, group) in passes {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(label),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, first, &[]);
-            pass.set_bind_group(1, &p.empty, &[]);
-            pass.set_bind_group(2, group, &[]);
-            pass.draw(0..3, 0..1);
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            gpu_util::full_screen_pass(encoder, label, view, clear, pipeline, &[first, &p.empty, group]);
         }
     }
 }
@@ -370,17 +347,7 @@ impl Passes {
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
             }),
-            params: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("clouds"),
-                size: size_of::<Params>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-        };
-        let uniform = wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Uniform,
-            has_dynamic_offset: false,
-            min_binding_size: None,
+            params: gpu_util::uniform_buffer(device, "clouds", size_of::<Params>()),
         };
         let volume = wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -395,13 +362,13 @@ impl Passes {
                 texture_entry(6, volume),
                 texture_entry(7, TEXTURE),
                 texture_entry(8, TEXTURE),
-                texture_entry(9, uniform),
-                texture_entry(10, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                texture_entry(9, UNIFORM),
+                texture_entry(10, FILTERING),
             ],
         });
         let params_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cloud weather"),
-            entries: &[texture_entry(9, uniform)],
+            entries: &[texture_entry(9, UNIFORM)],
         });
         let empty_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("clouds"), entries: &[] });
@@ -442,16 +409,10 @@ impl Passes {
         let weather_pass = pipeline(frame_layout, &params_layout, "fs_cloud_weather", WEATHER_FORMAT);
         // The shadow map's pass writes the map, which the frame's group 0 also reads (`binding` 19): its group 0
         // holds the frame's uniform buffer alone, so that the pass never reads and writes the same texture.
-        let shadow_first = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("cloud shadow frame"),
-            entries: &[texture_entry(0, uniform)],
-        });
+        let shadow_first = gpu_util::layout(device, "cloud shadow frame", &[UNIFORM]);
         let shadow_pass = pipeline(&shadow_first, &march_layout, "fs_cloud_shadow", SHADOW_FORMAT);
-        let shadow_frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("cloud shadow frame"),
-            layout: &shadow_first,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: frame_uniform.as_entire_binding() }],
-        });
+        let shadow_frame =
+            gpu_util::bind_group(device, "cloud shadow frame", &shadow_first, &[frame_uniform.as_entire_binding()]);
         let params_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("cloud weather"),
             layout: &params_layout,
@@ -531,19 +492,9 @@ fn sky_group(
     })
 }
 
-fn texture(device: &wgpu::Device, format: wgpu::TextureFormat, (width, height): (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("clouds"),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+fn texture(device: &wgpu::Device, format: wgpu::TextureFormat, size: (u32, u32)) -> wgpu::TextureView {
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "clouds", size, format, usage)
 }
 
 /// A tiling noise texture `side` texels across (`cs_cloud_noise`): the shape's (`kind` 0) or the detail's (1).
@@ -559,10 +510,7 @@ fn noise(device: &wgpu::Device, queue: &wgpu::Queue, side: u32, kind: u32) -> wg
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("cloud noise"),
-        source: wgpu::ShaderSource::Wgsl(NOISE.into()),
-    });
+    let module = gpu_util::shader(device, "cloud noise", NOISE);
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("cloud noise"),
         layout: None,
@@ -579,14 +527,12 @@ fn noise(device: &wgpu::Device, queue: &wgpu::Queue, side: u32, kind: u32) -> wg
             usage: wgpu::BufferUsages::UNIFORM,
         },
     );
-    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("cloud noise"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) },
-        ],
-    });
+    let group = gpu_util::bind_group(
+        device,
+        "cloud noise",
+        &pipeline.get_bind_group_layout(0),
+        &[params.as_entire_binding(), wgpu::BindingResource::TextureView(&view)],
+    );
     let mut encoder = device.create_command_encoder(&Default::default());
     {
         let mut pass = encoder.begin_compute_pass(&Default::default());
