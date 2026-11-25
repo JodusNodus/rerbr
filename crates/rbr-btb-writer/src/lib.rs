@@ -1,8 +1,11 @@
 pub mod bank;
 pub mod control;
+pub mod corridor;
 pub mod geometry;
+pub mod ini;
 pub mod materials;
 pub mod mesh;
+pub mod objects;
 pub mod pacenotes;
 pub mod probe;
 pub mod remesh;

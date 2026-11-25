@@ -3,8 +3,11 @@
 //! `rbr_ac_tracks`' AC conversion writes, through `rbr_btb_writer`: the mesh, texture and pacenote writers.
 use crate::surface;
 use rbr_btb_writer::bank::TextureZip;
-use rbr_btb_writer::stage::{publish, Destination};
+use rbr_btb_writer::corridor::{ground_near, Corridor};
+use rbr_btb_writer::ini;
 use rbr_btb_writer::materials::{self, Extras, Layers};
+use rbr_btb_writer::objects::Objects;
+use rbr_btb_writer::stage::{publish, Destination};
 use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -12,9 +15,7 @@ use rbr_btb_writer::{
     pacenotes,
     road::Line,
 };
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fmt::Write as _;
-use std::io::Write as _;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 /// The file a conversion leaves in its stage's folder: what it was made from. It marks the stage as one of ours.
@@ -177,40 +178,6 @@ pub fn convert(input: &Input, options: &Options) -> Result<Report, String> {
     Ok(Report { folder, ..report })
 }
 
-/// Plan cells within `radius` of the line, `cell` metres square; a triangle is in when its plan box touches one.
-pub struct Corridor {
-    cells: HashSet<(i64, i64)>,
-    cell: f64,
-}
-
-impl Corridor {
-    pub fn new(line: &Line, radius: f64, cell: f64) -> Corridor {
-        let r = (radius / cell).ceil() as i64 + 1;
-        let mut cells = HashSet::new();
-        for i in 0..=(line.length() / (cell * 0.5)).ceil() as usize {
-            let p = line.sample((i as f64 * cell * 0.5).min(line.length())).0;
-            let centre = ((p[0] / cell).floor() as i64, (p[1] / cell).floor() as i64);
-            for x in -r..=r {
-                for y in -r..=r {
-                    if x * x + y * y <= r * r {
-                        cells.insert((centre.0 + x, centre.1 + y));
-                    }
-                }
-            }
-        }
-        Corridor { cells, cell }
-    }
-
-    pub fn contains(&self, pos: &[[f64; 3]; 3]) -> bool {
-        let c = |v: f64| (v / self.cell).floor() as i64;
-        let range = |k: usize| {
-            let (a, b) = pos.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[k]), b.max(p[k])));
-            c(a)..=c(b)
-        };
-        range(0).any(|x| range(1).any(|y| self.cells.contains(&(x, y))))
-    }
-}
-
 /// ReRBR's far plane, metres (`rbr_btb::circuit::FAR`'s reach for drawn scenery).
 const FAR: f64 = 10_000.;
 /// Side of the cells ReRBR merges drawn meshes into (its BTB stage's `CELL`), metres.
@@ -297,67 +264,13 @@ impl Builder {
     }
 }
 
-/// `Objects.zip` and its `objectlist.ini`.
-struct Objects {
-    zip: zip::ZipWriter<std::fs::File>,
-    ini: String,
-    count: usize,
-}
-
-const IDENTITY: [f32; 16] = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.];
-
-impl Objects {
-    fn new(path: &Path) -> Result<Objects, String> {
-        let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        let mut objects = Objects { zip: zip::ZipWriter::new(file), ini: String::new(), count: 0 };
-        let identity: Vec<u8> = IDENTITY.iter().flat_map(|v| v.to_le_bytes()).collect();
-        objects.put("Objects/identity.xform", &identity)?;
-        Ok(objects)
+/// One mesh with its `materials.ini` section, placed by the `.xform` `xform`, and its `objectlist.ini` keys; none
+/// without triangles.
+fn mesh(objects: &mut Objects, builder: &Builder, material: &str, xform: &str, entries: &str) -> Result<(), String> {
+    if builder.triangles.is_empty() {
+        return Ok(());
     }
-
-    fn put(&mut self, name: &str, bytes: &[u8]) -> Result<(), String> {
-        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        self.zip.start_file(name, options).map_err(|e| e.to_string())?;
-        self.zip.write_all(bytes).map_err(|e| e.to_string())
-    }
-
-    /// One mesh with its `materials.ini` section and `objectlist.ini` keys.
-    fn mesh(&mut self, builder: &Builder, material: &str, entries: &str) -> Result<(), String> {
-        self.placed(builder, material, "identity", entries)
-    }
-
-    /// One mesh placed by the `.xform` `xform` (already written; `identity` is always there).
-    fn placed(&mut self, builder: &Builder, material: &str, xform: &str, entries: &str) -> Result<(), String> {
-        if builder.triangles.is_empty() {
-            return Ok(());
-        }
-        let i = self.count;
-        self.put(&format!("Objects/dr_{i}.x"), &builder.bytes(material))?;
-        let _ = writeln!(
-            self.ini,
-            "\n[Object_{i}]\nfile=dr_{i}\nxform={xform}\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}"
-        );
-        self.count += 1;
-        Ok(())
-    }
-
-    fn finish(self) -> Result<String, String> {
-        self.zip.finish().map_err(|e| e.to_string())?;
-        Ok(format!("[OBJECTS]\ncount={}\n{}", self.count, self.ini))
-    }
-}
-
-/// The ground under `p` within 3 m of its height, or beside it where a small gap lets the point through.
-fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)> {
-    let near = |x: f64, y: f64| ground.ground(x, y, p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.);
-    near(p[0], p[1]).or_else(|| {
-        [0.1, 0.25, 0.5].into_iter().find_map(|r| {
-            (0..8).find_map(|k| {
-                let a = f64::from(k) * std::f64::consts::FRAC_PI_4;
-                near(p[0] + r * a.cos(), p[1] + r * a.sin())
-            })
-        })
-    })
+    objects.add(&builder.bytes(material), xform, entries)
 }
 
 /// The stage's `settings.ini`: the sun and the renderer's own air, north the stage's +z (as for AC's frame). The
@@ -432,7 +345,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     };
     drop(ground);
 
-    let mut objects = Objects::new(&folder.join("Objects.zip"))?;
+    let mut objects = Objects::new(&folder.join("Objects.zip"), "dr")?;
     let mut bank = TextureZip::new(&folder.join("Textures.zip"))?;
     let (mut sections, mut names) = (String::new(), Vec::new());
 
@@ -512,7 +425,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             let lod = m.range.unwrap_or(options.lod);
             let entries =
                 format!("LODIn=0\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\nReRbrInstanced=1\n");
-            objects.placed(&builder, &section, &xform, &entries)?;
+            mesh(&mut objects, &builder, &section, &xform, &entries)?;
             model_triangles += builder.triangles.len();
             instanced_triangles += builder.triangles.len() * placed.matrices.len();
         }
@@ -581,7 +494,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         let lod = m.range.unwrap_or(if m.transparent { options.lod } else { FAR });
         let lod_in = input.instanced.lod_in.get(&(*material as u32)).copied().unwrap_or(0.);
         let entries = format!("LODIn={lod_in}\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
-        objects.mesh(builder, &section, &entries)?;
+        mesh(&mut objects, builder, &section, "identity", &entries)?;
         drawn_triangles += builder.triangles.len();
     }
     drop(tiles);
@@ -595,73 +508,36 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let collision_triangles = col.values().map(|b| b.triangles.len()).sum();
     let ids: BTreeSet<u8> = col.keys().map(|(_, id)| *id).collect();
-    let mut maps = String::new();
-    for (index, id) in ids.iter().enumerate() {
-        let texture = bank.put(rbr_btb_writer::textures::flat([f32::from(*id) / 255.; 4]), "dds")?;
-        let name = format!("collision\\surface_{id}");
-        materials::section(&mut sections, &name, &texture, false);
-        names.push(name);
-        let _ = writeln!(maps, "[MAP{index}]\ntexture={texture}");
-        for (key, surface) in ["data", "damp", "wet"].into_iter().zip(surface::weathers(*id)) {
-            for row in 0..16 {
-                let _ = writeln!(maps, "{key}{row}={}", vec![surface.to_string(); 16].join(" "));
-            }
-        }
-    }
+    let maps = ini::collision_surfaces(&ids, &mut bank, &mut sections, &mut names, surface::weathers)?;
     for ((_, id), builder) in &col {
-        let entries = "LODIn=0\nVisible=0\nShadowCaster=0\nCollisionModel=0\nCollisionOnly=1\n";
-        objects.mesh(builder, &format!("collision\\surface_{id}"), entries)?;
+        let entries = ini::COLLISION_ENTRIES;
+        mesh(&mut objects, builder, &ini::collision_material(*id), "identity", entries)?;
     }
     drop(col);
     let textures = bank.count;
     bank.finish()?;
 
-    let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
+    let write = |file: &str, text: String| ini::write(folder, file, text);
     write("objectlist.ini", objects.finish()?)?;
-    let mut list = format!("[MATERIALS]\ncount={}\n", names.len());
-    for (i, n) in names.iter().enumerate() {
-        let _ = writeln!(list, "MAT_{i}={n}");
-    }
-    write("materials.ini", format!("{list}\n{sections}"))?;
-    write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
-    let country = input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default()
-        + &input.place.map(|[lat, lon]| format!("latitude={lat:.4}\nlongitude={lon:.4}\n")).unwrap_or_default();
-    write(
-        "track.ini",
-        format!(
-            "[INFO]\nname={}\nphysics={physics}\nauthor=Codemasters (DiRT Rally)\nversion=DiRT Rally local conversion\nlength={:.3}\ncomment=Converted locally from {}\n{country}{}",
-            input.title,
-            input.length / 1000.,
-            input.route,
-            if input.circuit { "circuit=1\n" } else { "" }
-        ) + &input.lighting.map(|l| l.info_ini()).unwrap_or_default(),
-    )?;
+    write("materials.ini", ini::materials_ini(&names, &sections))?;
+    write("mat.ini", ini::mat_ini(ids.len(), &maps))?;
+    let info = ini::TrackInfo {
+        name: &input.title,
+        physics,
+        author: "Codemasters (DiRT Rally)",
+        version: "DiRT Rally local conversion",
+        length_km: input.length / 1000.,
+        comment: &format!("Converted locally from {}", input.route),
+        splashscreen: None,
+        country: input.country,
+        place: input.place,
+        circuit: input.circuit,
+    };
+    write("track.ini", info.ini() + &input.lighting.map(|l| l.info_ini()).unwrap_or_default())?;
     write("settings.ini", settings)?;
-    let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
-    let n = line.points.len();
-    for (i, p) in line.points.iter().enumerate() {
-        // A ring's last point repeats its first: neighbours wrap around the seam.
-        let (a, b) = if input.circuit {
-            (line.points[(i + n - 2) % (n - 1)], line.points[(i + 1) % (n - 1)])
-        } else {
-            (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)])
-        };
-        let length = rbr_btb_writer::road::distance(a, b).max(1e-9);
-        let t: [f64; 3] = std::array::from_fn(|k| (b[k] - a[k]) / length);
-        let at = if input.circuit { line.at[i] } else { i as f64 * 2.5 };
-        let _ = writeln!(
-            dl,
-            "K{i}={}, {}, {}, {}, {}, {}, {}, 0",
-            p[0] - origin[0],
-            p[1] - origin[1],
-            p[2],
-            t[0],
-            t[1],
-            t[2],
-            at
-        );
-    }
-    write("driveline.ini", dl)?;
+    let at: Vec<f64> =
+        (0..line.points.len()).map(|i| if input.circuit { line.at[i] } else { i as f64 * 2.5 }).collect();
+    write("driveline.ini", ini::driveline_ini(&line.points, &at, origin, input.circuit))?;
     // Start, finish and the result marker 15 m past the finish; the splits; the corners graded from the line.
     // A circuit's start, finish and end keys lie far past the lap so the 1.02 timekeeper never fires them, and it has no
     // pacenotes.
@@ -680,25 +556,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         crate::pacenotes::notes(&input.calls, &line.points, &line.at, start, finish)
     };
     notes.extend(called.iter().map(|n| (n.tag, n.flags, n.distance)));
-    notes.sort_by(|a, b| a.2.total_cmp(&b.2));
-    let mut pn = format!("[PACENOTES]\ncount={}\n", notes.len());
-    for (i, (tag, flag, s)) in notes.iter().enumerate() {
-        let _ = writeln!(pn, "\n[P{i}]\ntype={tag}\nflag={flag}\ndistance={s:.4}");
-    }
-    write("pacenotes.ini", pn)?;
-    let mut sp = String::from("[SPAWN]\n");
-    for i in 0..16 {
-        let v = match i {
-            0 | 5 | 10 => 1.,
-            12 => spawn[0] - origin[0],
-            13 => spawn[2],
-            14 => spawn[1] - origin[1],
-            _ => 0.,
-        };
-        let _ = writeln!(sp, "m{i:02}={v}");
-    }
-    let _ = writeln!(sp, "angleX=0\nangleY=0\nangleZ={}", heading[0].atan2(heading[1]));
-    write("spawn.ini", sp)?;
+    write("pacenotes.ini", ini::pacenotes_ini(&mut notes))?;
+    write("spawn.ini", ini::spawn_ini(spawn, heading, origin))?;
     let provenance = serde_json::json!({
         "source": input.source, "route": input.route, "origin": origin, "physics": physics,
         "length_m": input.length, "line_length_m": input.finish - input.start, "start_m": start, "finish_m": finish,
@@ -706,8 +565,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "collision_source": input.collision_source, "surface_triangles": input.surface_counts,
         "circuit": input.circuit, "textures": textures, "pacenotes": called.len(), "missing_ground_points": missing,
     });
-    let provenance = serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?;
-    write(CONVERSION_FILE, provenance)?;
+    ini::write_provenance(folder, CONVERSION_FILE, &provenance)?;
     control.say("validating BTB collision cells");
     let stats = rbr_btb_writer::stage::check_cells(folder)?;
     control.say(&format!("{} cells, largest {}/65536 vertices; {textures} textures", stats.cells, stats.max_vertices));

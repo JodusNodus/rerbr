@@ -2358,6 +2358,7 @@ dependencies = [
  "intel_tex_2",
  "rbr-btb",
  "rbr-formats",
+ "serde_json",
  "texpresso",
  "zip",
 ]

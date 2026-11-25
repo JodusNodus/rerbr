@@ -4,19 +4,20 @@ use crate::assetto::{ai, csp, kn5, material, multilayer, trees};
 use rbr_btb_writer::{
     materials,
     control::Control,
+    corridor::{ground_near, Corridor},
     geometry::{Grid, Triangle},
+    ini,
     mesh::{self as xwrite, XMesh},
+    objects::Objects,
     pacenotes,
     road::{self, Line},
     stage,
     textures,
 };
-use kn5::{Matrix, IDENTITY};
+use kn5::Matrix;
 use rbr_btb::circuit::FAR;
 use rbr_btb::scene::Grass;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fmt::Write as _;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 /// Starts the error of a missing timing gate marker: a closed AI loop without gates is a circuit.
@@ -47,21 +48,6 @@ pub struct Input {
     pub circuit: bool,
     pub ai_extensions: [f64; 2],
     pub ai_trimmed_points: usize,
-}
-
-/// The ground under a driveline point within 3 m of its height. A collision mesh may have a gap a few centimetres
-/// wide under the line (Nagao: 36 of 2 526 points, every one with ground within 0.3 m), so the nearest ground within
-/// half a metre stands in for it.
-fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)> {
-    let near = |x: f64, y: f64| ground.ground(x, y, p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.);
-    near(p[0], p[1]).or_else(|| {
-        [0.1, 0.25, 0.5].into_iter().find_map(|r| {
-            (0..8).find_map(|k| {
-                let a = f64::from(k) * std::f64::consts::FRAC_PI_4;
-                near(p[0] + r * a.cos(), p[1] + r * a.sin())
-            })
-        })
-    })
 }
 
 /// The latitude and longitude of an Assetto Corsa track's `geotags` (`["37° 54′ 12″ N", "13° 49′ 52″ E"]`, or plain
@@ -390,43 +376,6 @@ pub struct Report {
     pub max_cell_vertices: usize,
 }
 
-/// Occupied plan cells, conservatively expanded from the sampled course. Triangles test their entire
-/// bounding box, so long ground triangles crossing the road stay even when their centroid is far away.
-struct Corridor {
-    cells: HashSet<(i64, i64)>,
-    cell: f64,
-}
-impl Corridor {
-    fn new(line: &Line, radius: f64, cell: f64) -> Self {
-        let mut cells = HashSet::new();
-        let r = (radius / cell).ceil() as i64 + 1;
-        for i in 0..=(line.length() / (cell * 0.5)).ceil() as usize {
-            let p = line.sample((i as f64 * cell * 0.5).min(line.length())).0;
-            let centre = ((p[0] / cell).floor() as i64, (p[1] / cell).floor() as i64);
-            for x in -r..=r {
-                for y in -r..=r {
-                    if ((x * x + y * y) as f64).sqrt() <= r as f64 {
-                        cells.insert((centre.0 + x, centre.1 + y));
-                    }
-                }
-            }
-        }
-        Self { cells, cell }
-    }
-    fn contains(&self, points: &[[f64; 3]]) -> bool {
-        let lo = |k| (points.iter().map(|p| p[k]).fold(f64::MAX, f64::min) / self.cell).floor() as i64;
-        let hi = |k| (points.iter().map(|p| p[k]).fold(f64::MIN, f64::max) / self.cell).floor() as i64;
-        for x in lo(0)..=hi(0) {
-            for y in lo(1)..=hi(1) {
-                if self.cells.contains(&(x, y)) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-}
-
 #[derive(Default)]
 struct Builder {
     positions: Vec<[f32; 3]>,
@@ -617,79 +566,11 @@ fn lod_padding(meshes: &[(Bounds, (u32, u32))]) -> Vec<f32> {
         .collect()
 }
 
-struct Objects {
-    zip: zip::ZipWriter<std::fs::File>,
-    ini: String,
-    count: usize,
-}
-impl Objects {
-    fn new(path: &Path) -> Result<Self, String> {
-        let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        let mut out = Self { zip: zip::ZipWriter::new(file), ini: String::new(), count: 0 };
-        out.put("Objects/identity.xform", &IDENTITY.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>())?;
-        Ok(out)
-    }
-    fn put(&mut self, name: &str, bytes: &[u8]) -> Result<(), String> {
-        self.zip.start_file(name, deflated()).map_err(|e| e.to_string())?;
-        self.zip.write_all(bytes).map_err(|e| e.to_string())
-    }
-    /// Writes `(geometry, material, objectlist entries)` meshes in order. The bytes are built and deflated on every core,
-    /// each as a one-entry archive that is copied in without recompressing: deflate is most of an import's time.
-    fn meshes(&mut self, batch: Vec<(Builder, String, String)>) -> Result<(), String> {
-        self.meshes_placed(batch, "identity")
-    }
-    /// [`Self::meshes`] placed by the `.xform` entry `xform`, which the caller has [`put`](Self::put).
-    fn meshes_placed(&mut self, batch: Vec<(Builder, String, String)>, xform: &str) -> Result<(), String> {
-        let batch: Vec<_> = batch.into_iter().filter(|(b, ..)| !b.triangles.is_empty()).collect();
-        let (first, count) = (self.count, batch.len());
-        let threads = std::thread::available_parallelism().map_or(4, usize::from).min(batch.len().max(1));
-        let archives = std::thread::scope(|scope| {
-            let batch = &batch;
-            let workers: Vec<_> = (0..threads)
-                .map(|t| {
-                    scope.spawn(move || {
-                        (t..batch.len())
-                            .step_by(threads)
-                            .map(|i| {
-                                (i, archive(&format!("Objects/ac_{}.x", first + i), &batch[i].0.bytes(&batch[i].1)))
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .collect();
-            let mut all: Vec<_> = workers.into_iter().flat_map(|w| w.join().unwrap()).collect();
-            all.sort_by_key(|(i, _)| *i);
-            all.into_iter().map(|(_, archive)| archive)
-        });
-        for (i, (archive, (.., entries))) in archives.zip(batch).enumerate() {
-            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive?)).map_err(|e| e.to_string())?;
-            self.zip.raw_copy_file(archive.by_index_raw(0).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-            let _ = writeln!(
-                self.ini,
-                "\n[Object_{}]\nfile=ac_{}\nxform={xform}\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}",
-                first + i,
-                first + i
-            );
-        }
-        self.count += count;
-        Ok(())
-    }
-    fn finish(self) -> Result<String, String> {
-        self.zip.finish().map_err(|e| e.to_string())?;
-        Ok(format!("[OBJECTS]\ncount={}\n{}", self.count, self.ini))
-    }
-}
-
-fn deflated() -> zip::write::SimpleFileOptions {
-    zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)
-}
-
-/// `bytes` as the only entry of a zip held in memory.
-fn archive(name: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    zip.start_file(name, deflated()).map_err(|e| e.to_string())?;
-    zip.write_all(bytes).map_err(|e| e.to_string())?;
-    Ok(zip.finish().map_err(|e| e.to_string())?.into_inner())
+/// Writes `(geometry, material, objectlist entries)` meshes in order, placed by the `.xform` entry `xform` the caller has
+/// put (`identity` is always there); the meshes without triangles are left out.
+fn meshes(objects: &mut Objects, batch: Vec<(Builder, String, String)>, xform: &str) -> Result<(), String> {
+    let batch: Vec<_> = batch.into_iter().filter(|(b, ..)| !b.triangles.is_empty()).collect();
+    objects.add_all(&batch, xform, |(builder, material, entries)| (builder.bytes(material), entries.clone()))
 }
 
 /// A drawn mesh's tile, material, source `LODIn` and `LODOut`, whether it is far scenery ([`Far`]), and its grass profile
@@ -950,7 +831,7 @@ fn tree_cards(
             .map(|(part, material)| (model_part(proto, part), material.clone(), entries.clone()))
             .collect();
         model_triangles += batch.iter().map(|(b, ..)| b.triangles.len()).sum::<usize>();
-        objects.meshes_placed(batch, &xform)?;
+        meshes(objects, batch, &xform)?;
     }
     // Each file's cards start where its models end.
     let range_of: BTreeMap<&str, f64> =
@@ -971,7 +852,7 @@ fn tree_cards(
         );
         batch.push((b, material, entries));
     }
-    objects.meshes(batch)?;
+    meshes(objects, batch, "identity")?;
     Ok((placed, triangles, model_triangles))
 }
 
@@ -1089,7 +970,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         options.surface_overrides.clone(),
     )?;
     let mut collision = Vec::<Triangle>::new();
-    let mut objects = Objects::new(&folder.join("Objects.zip"))?;
+    let mut objects = Objects::new(&folder.join("Objects.zip"), "ac")?;
     let mut bank = material::TextureBank::new(&folder.join("Textures.zip"))?;
     bank.origin = origin;
     let mut materials = String::new();
@@ -1279,7 +1160,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             let material = std::mem::take(&mut b.material);
             batch.push((b, material, entries));
         }
-        objects.meshes(batch)?;
+        meshes(&mut objects, batch, "identity")?;
         options.control.say(&format!(
             "{} source triangles, {drawn_triangles} drawn so far, {} collision so far",
             model.meshes.iter().map(|m| m.triangle_count).sum::<usize>(),
@@ -1375,28 +1256,18 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let collision_triangles = col_builders.values().map(|b| b.triangles.len()).sum();
     let ids = col_builders.keys().map(|(_, id)| *id).collect::<BTreeSet<_>>();
-    let mut maps = String::new();
-    for (index, id) in ids.iter().enumerate() {
-        let texture = bank.put(rbr_btb_writer::textures::flat([*id as f32 / 255.; 4]), "dds")?;
-        let name = format!("collision\\surface_{id}");
-        materials::section(&mut materials, &name, &texture, false);
-        names.push(name);
-        let _ = writeln!(maps, "[MAP{index}]\ntexture={texture}");
-        let weather = if *id == 117 { [*id; 3] } else { rbr_btb_writer::surfaces::weathers(*id) };
-        for (key, surface) in ["data", "damp", "wet"].into_iter().zip(weather) {
-            for row in 0..16 {
-                let _ = writeln!(maps, "{key}{row}={}", vec![surface.to_string(); 16].join(" "));
-            }
+    let maps = ini::collision_surfaces(&ids, &mut bank.files, &mut materials, &mut names, |id| {
+        if id == 117 {
+            [id; 3]
+        } else {
+            rbr_btb_writer::surfaces::weathers(id)
         }
-    }
+    })?;
     let batch = col_builders
         .into_iter()
-        .map(|((_, id), b)| {
-            let entries = "LODIn=0\nVisible=0\nShadowCaster=0\nCollisionModel=0\nCollisionOnly=1\n";
-            (b, format!("collision\\surface_{id}"), entries.to_owned())
-        })
+        .map(|((_, id), b)| (b, ini::collision_material(id), ini::COLLISION_ENTRIES.to_owned()))
         .collect();
-    objects.meshes(batch)?;
+    meshes(&mut objects, batch, "identity")?;
     let texture_count = bank.files.count;
     let missing_textures = bank.missing.len();
     let simplified = bank.simplified.clone();
@@ -1411,54 +1282,39 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         None => None,
     };
     bank.finish()?;
-    let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
+    let write = |file: &str, text: String| ini::write(folder, file, text);
     write("objectlist.ini", objects.finish()?)?;
-    let mut list = format!("[MATERIALS]\ncount={}\n", names.len());
-    for (i, n) in names.iter().enumerate() {
-        let _ = writeln!(list, "MAT_{i}={n}");
-    }
-    write("materials.ini", format!("{list}\n{}", material::normalise_light(&materials, &light_areas)))?;
-    write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
+    write("materials.ini", ini::materials_ini(&names, &material::normalise_light(&materials, &light_areas)))?;
+    write("mat.ini", ini::mat_ini(ids.len(), &maps))?;
     // No `<digits>_` name: that is a BTB id (`rbr_btb::ids::splash_id`).
     let splash = match &input.preview {
         Some(path) => {
             std::fs::copy(path, folder.join("preview.png")).map_err(|e| format!("{}: {e}", path.display()))?;
-            "splashscreen=preview.png\n"
+            Some("preview.png")
         }
-        None => "",
+        None => None,
     };
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
-    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{splash}{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default()+&input.place.map(|[lat, lon]| format!("latitude={lat:.4}\nlongitude={lon:.4}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
+    let info = ini::TrackInfo {
+        name: &title,
+        physics,
+        author: &input.author,
+        version: "AC local conversion",
+        length_km: (input.finish - input.start) / 1000.,
+        comment: "Converted locally by ac-stage",
+        splashscreen: splash,
+        country: input.country,
+        place: input.place,
+        circuit: input.circuit,
+    };
+    write("track.ini", info.ini())?;
     let mut settings = String::from(SETTINGS_INI);
     if let Some(fx) = &grass_fx {
         settings.push('\n');
         settings.push_str(&fx.section(grass_atlas.as_deref()));
     }
     write("settings.ini", settings)?;
-    let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
-    for (i, p) in line.points.iter().enumerate() {
-        // A ring's last point repeats its first: neighbours wrap around the seam.
-        let n = line.points.len();
-        let (a, b) = if input.circuit {
-            (line.points[(i + n - 2) % (n - 1)], line.points[(i + 1) % (n - 1)])
-        } else {
-            (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)])
-        };
-        let length = road::distance(a, b).max(1e-9);
-        let t = std::array::from_fn::<_, 3, _>(|k| (b[k] - a[k]) / length);
-        let _ = writeln!(
-            dl,
-            "K{i}={}, {}, {}, {}, {}, {}, {}, 0",
-            p[0] - origin[0],
-            p[1] - origin[1],
-            p[2],
-            t[0],
-            t[1],
-            t[2],
-            line.at[i]
-        );
-    }
-    write("driveline.ini", dl)?;
+    write("driveline.ini", ini::driveline_ini(&line.points, &line.at, origin, input.circuit))?;
     // The result marker must be within the car's braking run after the finish.
     // A circuit's start, finish and end keys lie far past the lap so the 1.02 timekeeper never fires them.
     let mut notes = if input.circuit {
@@ -1469,26 +1325,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     notes.extend(input.splits.iter().map(|s| (0x17, 0, *s - from)));
     let called = pacenotes::notes(&line.points, &line.at, start, finish);
     notes.extend(called.iter().map(|n| (n.tag, n.flags, n.distance)));
-    notes.sort_by(|a, b| a.2.total_cmp(&b.2));
-    let mut pn = format!("[PACENOTES]\ncount={}\n", notes.len());
-    for (i, (tag, flag, s)) in notes.iter().enumerate() {
-        let _ = writeln!(pn, "\n[P{i}]\ntype={tag}\nflag={flag}\ndistance={s:.4}");
-    }
-    write("pacenotes.ini", pn)?;
+    write("pacenotes.ini", ini::pacenotes_ini(&mut notes))?;
     let Spawn { position: p, tangent, source: spawn_source, before_start: spawn_before_start_m } = spawn_position;
-    let mut spawn = String::from("[SPAWN]\n");
-    for i in 0..16 {
-        let v = match i {
-            0 | 5 | 10 => 1.,
-            12 => p[0] - origin[0],
-            13 => p[2],
-            14 => p[1] - origin[1],
-            _ => 0.,
-        };
-        let _ = writeln!(spawn, "m{i:02}={v}");
-    }
-    let _ = writeln!(spawn, "angleX=0\nangleY=0\nangleZ={}", tangent[0].atan2(tangent[1]));
-    write("spawn.ini", spawn)?;
+    write("spawn.ini", ini::spawn_ini(p, tangent, origin))?;
     let mut provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
         "source_triangles":source_triangles,"drawn_triangles":drawn_triangles,"far_triangles":far_triangles,"csp_trees":tree_count,"csp_tree_triangles":tree_triangles,"collision_triangles":collision_triangles,
         "ai_source":input.ai_source,"reversed_ai":input.reversed_ai,"circuit":input.circuit,"ai_extensions_m":input.ai_extensions,
@@ -1508,7 +1347,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     provenance["sheen_materials"] = sheened.into();
     provenance["multilayer_per_pixel_materials"] = layered.into();
-    write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
+    ini::write_provenance(folder, CONVERSION_FILE, &provenance)?;
     options.control.say("validating BTB collision cells");
     let stats = rbr_btb_writer::stage::check_cells(folder)?;
     let max_cell_vertices = stats.max_vertices;
