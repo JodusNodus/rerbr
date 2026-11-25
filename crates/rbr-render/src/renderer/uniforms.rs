@@ -495,7 +495,7 @@ impl Renderer {
                 grass: self
                     .grass_made
                     .as_ref()
-                    .map_or(crate::grass::Level::uniform(self.enhance.grass, false), |made| made.profile()),
+                    .map_or(crate::grass::Level::uniform(self.enhance.grass), |made| made.profile()),
             };
             *slot = uniform;
         }

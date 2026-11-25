@@ -1430,7 +1430,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             }
         } else if (finish_owns) {
             // A finish's reflection in place of the class's and of the clear coat (`finish.wgsl`).
-            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, visible, shaded));
+            let open = specular_occlusion(visible, nv, mix(FINISH_BLUR.x, FINISH_BLUR.y, mode.finish[1].w) / 7.0);
+            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, open, shaded));
             shine = vec3<f32>(0.0);
         }
         colour = shaded + shine;
@@ -1454,7 +1455,9 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
                 mirrored = layer.mirrored;
                 coat = layer.coat;
             }
-            colour = pow(pow(shaded, vec3<f32>(2.2)) * (1.0 - coat) + pow(mirrored, vec3<f32>(2.2)) * coat * sky_dim * visible, vec3<f32>(1.0 / 2.2));
+            // Lagarde's specular occlusion from the body's occlusion: a sharp lobe cut harder than a rough one.
+            let mirror_seen = specular_occlusion(visible, nv, roughness);
+            colour = pow(pow(shaded, vec3<f32>(2.2)) * (1.0 - coat) + pow(mirrored, vec3<f32>(2.2)) * coat * sky_dim * mirror_seen, vec3<f32>(1.0 / 2.2));
         }
     }
     if (CABIN && inside && v.specular.y >= CABIN_MIRROR_GLASS) {
@@ -2358,6 +2361,12 @@ fn environment_reflectance(nv: f32, roughness: f32) -> f32 {
     return min(0.04 * ab.x + ab.y, 1.0);
 }
 
+// Lagarde's specular occlusion (Moving Frostbite to PBR, 2014): how much of the reflection an ambient visibility `ao`
+// leaves at facing `nv` and `roughness`; 1 for an open point, a sharp lobe cut harder than a rough one.
+fn specular_occlusion(ao: f32, nv: f32, roughness: f32) -> f32 {
+    return clamp(pow(nv + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
+}
+
 // A BTB normal map's normal (`stage::Surface::normal`): red and green are x and y, z is rebuilt and the slope scaled,
 // as the `Bump` effects read it, in the frame of the map's uv on screen (Schuler 2013, as `crack_normal`), so the meshes need no
 // tangents: x along u, y along v, the uv's own handedness whatever the mesh's.
@@ -2427,7 +2436,7 @@ fn rough_dielectric(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, roughness: f3
     let nv = max(dot(n, view), 1e-3);
     let reflectance = environment_reflectance(nv, roughness);
     let seen = 1.0 - v.sky.z;
-    let occlusion = clamp(pow(nv + seen, exp2(-16.0 * roughness - 1.0)) - 1.0 + seen, 0.0, 1.0);
+    let occlusion = specular_occlusion(seen, nv, roughness);
     let sky = pow(sky_reflected(reflect(-view, n), roughness), vec3<f32>(2.2)) * occlusion;
     // The sun's highlight.
     let to_sun = -frame.sun.xyz;

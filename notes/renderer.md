@@ -1471,6 +1471,9 @@ Our cards (kind 1) dithered too (2026-11-25, user report "grass resizing while d
 the ground and sank as the eye moved (each a fixed rank, full where the density at its distance is above it, none at
 `GRASS_MARGIN` times it: Dense 40-60 m for the last third, Light from 20 m). They now keep their height and take the
 same dither (`grass_dithered` for kinds 1 to 4); profile unchanged. Shaders validate; no captures or motion check yet.
+One profile for every stage (2026-11-25, user decision): ours took the converted stages' full distance (`FX_FULL`
+gone): Light 0.5 to 30 m, 2x, none by 100 m; Dense 1.0 to 60 m, 5x, none by 300 m. More cards grow 40-200 m out
+(about 1.5x past 60 m); cost and card counts not measured.
 
 Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every
@@ -1568,6 +1571,14 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   for byte elsewhere, where the route passes 7.4 m over itself (9.44 and 9.58 km) included; even probe 0 (9 km off, 600 m
   lower) everywhere moves the chase frame 0.17%, the cockpit 1.7%. The probes reach the car only blurred and clamped
   (`surroundings`); by day its paint mirrors the per-frame cube, wet asphalt the sky.
+- Specular occlusion (ours, 2026-11-25, `specular_occlusion` in `shader.wgsl`, Lagarde 2014): the car's coat and
+  finishes take it from the body's occlusion (`visible`, which cut them linearly before), the wet road's probe
+  reflection from `1 - car_contact` (the probes hold no car, so the road under it mirrored the open sky; the stage's
+  occlusion left out there, as the probes hold the trees and it darkened forest puddles); the road's `rough_dielectric`
+  already had it. No extra pass or sample. Rain Luceram GC8 low chase RMSE 2.4/255 (under the car), reference shots
+  0.1-0.7, cockpits unchanged. Tried and dropped: GGX energy compensation (`1 + F0 (1/(A+B) - 1)`, Karis's fit) on the
+  coat and rims: the car has no rough metal (rims `RIM_METAL` at roughness 0.3, coat 0.07), gains 1.002-1.11, RMSE
+  under 0.12.
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
   stays out, its own map shadows it). A plant taller than grass is a crown (`trees`: the retail trees are three wings
