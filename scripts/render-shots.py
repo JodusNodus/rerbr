@@ -34,7 +34,8 @@ ROOT = Path(__file__).resolve().parent.parent
 # What a shot fixes in the launcher's settings (the rest is default); visible options only.
 SETTINGS = {
     'weather': 'good', 'wetness': 'dry', 'fog': 'off', 'precipitation': 'none', 'wear': 'new', 'tyre': 'auto',
-    'fov': '55', 'wipers': 'auto', 'dials': 'on', 'mirrors': '1', 'anti_aliasing': 'taa',
+    'fov': '55', 'wipers': 'auto', 'dials': 'on', 'mirrors': 'on', 'reflection_updates': '1',
+    'reflection_resolution': '100', 'anti_aliasing': 'taa',
     'wet_roads': 'high', 'render_scale': '100', 'upscale_textures': 'on', 'start_time': '16:00',
 }
 # Copied from the player's settings: where the game and NGP are.

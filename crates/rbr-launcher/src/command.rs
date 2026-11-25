@@ -751,7 +751,14 @@ impl Form {
             .flatten();
         let present = ["--present".to_owned(), self.present.name().to_owned()];
         let max_fps = (self.max_fps > 0).then(|| ["--max-fps".to_owned(), self.max_fps.to_string()]);
-        let mirrors = ["--mirrors".to_owned(), self.graphics.mirrors.name()];
+        let mirrors = [
+            "--mirrors".to_owned(),
+            if self.graphics.mirrors { "on" } else { "off" }.to_owned(),
+            "--reflection-rate".to_owned(),
+            self.graphics.reflection_rate.name(),
+            "--reflection-res".to_owned(),
+            self.graphics.reflection_scale.name().to_owned(),
+        ];
         let fullscreen = self.fullscreen.then(|| "--fullscreen".to_owned());
         let triple = triple_args(self.triple_rig(), self.triple_monitors(), self.fullscreen);
         let curved = curved_args(self.curved_panel());
