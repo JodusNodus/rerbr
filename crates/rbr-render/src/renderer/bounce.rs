@@ -475,3 +475,11 @@ impl Surfaces {
         }
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_bounce_params_keeps_the_shaders_layout,
+    crate::bounce::SHADER,
+    "Params",
+    Params { toward, grid, counts, weight, tiles }
+);

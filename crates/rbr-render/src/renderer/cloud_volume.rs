@@ -597,3 +597,11 @@ fn noise(device: &wgpu::Device, queue: &wgpu::Queue, side: u32, kind: u32) -> wg
     queue.submit([encoder.finish()]);
     view
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_cloud_params_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "CloudParams",
+    Params { previous, state, weather, layer, shape, shadow }
+);

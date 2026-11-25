@@ -173,3 +173,11 @@ impl BulbPass {
         pass.draw(0..6, 0..self.count);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_stage_lamps_view_keeps_the_shaders_layout,
+    SHADER,
+    "View",
+    ViewUniform { view_projection, eye, colour, fog, screen }
+);

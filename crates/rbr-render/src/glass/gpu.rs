@@ -550,3 +550,11 @@ impl Pass {
         }
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_glass_frame_keeps_the_shaders_layout,
+    SHADER,
+    "Frame",
+    FrameUniform { view_projection, screen, light, night, outside, eye, sun, sun_light, wipers.wipers, wipers.strokes, wipers.wiping, wipers.film, sun_matrix, shadow }
+);

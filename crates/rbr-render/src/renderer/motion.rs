@@ -302,3 +302,11 @@ fn target(device: &wgpu::Device, (width, height): (u32, u32)) -> wgpu::TextureVi
         })
         .create_view(&Default::default())
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_motion_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "Motion",
+    Uniform { view_projection, previous_view_projection, previous_body }
+);

@@ -367,3 +367,11 @@ mod tests {
         assert_eq!(v[2].rgba, [0.5; 4]);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_skidmarks_view_keeps_the_shaders_layout,
+    SHADER,
+    "View",
+    ViewUniform { view_projection, light, lamps, eye }
+);

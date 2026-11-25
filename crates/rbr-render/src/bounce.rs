@@ -52,7 +52,7 @@ mod tests {
     fn the_bakes_step_the_vertex_buffer_by_a_vertex() {
         let words = std::mem::size_of::<crate::stage::Vertex>() / 4;
         for shader in [SHADER, crate::sky_occlusion::SHADER] {
-            assert!(shader.contains(&format!("const STRIDE: u32 = {words}u;")), "STRIDE is not {words} words");
+            assert_eq!(crate::shader_check::wgsl_const(shader, "STRIDE"), words as f64, "STRIDE is not {words} words");
         }
     }
 }
