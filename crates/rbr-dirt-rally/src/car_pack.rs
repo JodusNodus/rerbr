@@ -80,7 +80,7 @@ impl Style {
 struct Finish {
     /// The DiRT material id as a name part (`shiny_painted_metal`).
     slug: String,
-    /// `plain`, `flock` or `carbon`.
+    /// `plain`, `flock`, `carbon`, or the exterior's `gated` (the lights' pod: the reflection follows the lit albedo).
     kind: &'static str,
     /// `FresnelMin`, `FresnelMax`, `FresnelPower`.
     fresnel: [f32; 3],
@@ -90,6 +90,9 @@ struct Finish {
     phong: [f32; 5],
     /// The suede's `NoiseSize`.
     noise: Option<f32>,
+    /// The exterior's gain on the face's specular before it saturates (`FinishSpecular`): DiRT's 2 times the reference the
+    /// specular was written with. None for the interior (the reader takes 1).
+    specular: Option<f32>,
     /// The carbon's `CarbonSpecularStrength`, `CarbonSpecularPower`, `CarbonFibreGlobalSpecularFalloffPower`.
     carbon: Option<[f32; 3]>,
 }
@@ -103,6 +106,9 @@ impl Finish {
             out += &format!("FinishEnvironment = {}\n", list(environment));
         }
         out += &format!("FinishPhong = {}\n", list(&self.phong));
+        if let Some(gain) = self.specular {
+            out += &format!("FinishSpecular = {gain}\n");
+        }
         if let Some(noise) = self.noise {
             out += &format!("FinishNoise = {noise}\n");
         }
@@ -207,7 +213,8 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
                 .with_normal(Source::LiveryClass(short, format!("{car}_wheel_nm.tga")))
         };
         return match &name[title.len()..] {
-            " Wheel" => Some(atlas("CarRim")),
+            // The rim's specular is the atlas's alpha as it is (reference 1).
+            " Wheel" => Some(Style { finish: Some(exterior_finish(m, "plain", 2.0)), ..atlas("CarRim") }),
             " Tyre Wall" => Some(atlas("CarTire")),
             " Tyre Tread" => Some(
                 Style::new("CarTire", format!("tyre_{class}"), generic(short, "tread"))
@@ -237,8 +244,13 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         |key: &str, source: &dyn Fn(&str) -> Source| matt(key, source(key)).with_normal(source(&format!("{key}_nm")));
     match name {
         // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
-        "Car Body Paint" | "Shiny Metal" => Some(body("CarPaint")),
-        "Matt" | "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTexture")),
+        // The paint keeps no finish (the renderer's clear coat); the bare metal's finish makes it a material of its own.
+        "Car Body Paint" => Some(body("CarPaint")),
+        "Shiny Metal" => {
+            Some(Style { finish: Some(exterior_finish(m, "plain", 2.0 * FULL_SPECULAR)), ..body("CarPaint") })
+        }
+        "Matt" => Some(Style { finish: Some(exterior_finish(m, "plain", FULL_SPECULAR)), ..body("CarTexture") }),
+        "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTexture")),
         "Cabin" => Some(matt("cabin", own("cabin"))),
         "Window Glass" => Some(Style { opacity: true, ..Style::new("CarGlass", "glass", own("glass")) }),
         // The lens carries the lamp's colours: its UVs lie on the lights atlas (red and amber at the tail, a clear
@@ -250,7 +262,8 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         // the texture's).
         "Lights Pod" | "Lights Satin" => {
             let maps = Maps { specular: Some((own("lights_spec_occ"), 1, FULL_SPECULAR)), ..Maps::default() };
-            Some(Style { maps, ..matt("lights", own("lights")) }.with_normal(own("lights_nm")))
+            let finish = Some(exterior_finish(m, "gated", 2.0 * FULL_SPECULAR));
+            Some(Style { maps, finish, ..matt("lights", own("lights")) }.with_normal(own("lights_nm")))
         }
         "Discs" => Some(mapped("disc", &livery)),
         "Caliper" => Some(mapped("caliper", &livery)),
@@ -258,6 +271,24 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         "Grills" => Some(mapped("grills", &|name| generic("main", name))),
         _ => None,
     }
+}
+
+/// The shading constants of an exterior material that reflects or shines (`Shiny Metal`, the wheel, the lights' pods and
+/// `Matt`), from DiRT's `carpaint_metallic.fx`, `car_wheel.fx`, `car_light_pod.fx` and `car_matt.fx` as decoded: the first
+/// three blend the lit colour toward the untinted cube by Fresnel times `sat(2 * specular)` (`EnvironmentColour` is not
+/// read: the cube is white and sharp, none where `FresnelMax` is 0), with a sun flake from `MetallicSpecularPower`; `Matt`
+/// has no reflection, only the sun's highlight (`SpecularHighlightPower`, `SpecularHighlightStrength`). `gain` is the
+/// factor on the face's specular: 2 times the reference it was written with (the highlight of `Matt` takes it as is).
+fn exterior_finish(m: &Material, kind: &'static str, gain: f32) -> Finish {
+    let get = |name: &str, default: f32| constant(m, name).unwrap_or(default);
+    let matt = m.id == "Matt";
+    let fresnel = [get("FresnelMin", 0.0), get("FresnelMax", 1.0), get("FresnelPower", 1.0)];
+    let (environment, phong) = if matt {
+        (None, [get("SpecularHighlightPower", 15.0), get("SpecularHighlightStrength", 1.5), 1.0, 1.0, 1.0])
+    } else {
+        ((fresnel[1] > 0.0).then_some([1.0, 1.0, 1.0, 0.0]), [get("MetallicSpecularPower", 10.0), 1.0, 1.0, 1.0, 1.0])
+    };
+    Finish { slug: slug(&m.id), kind, fresnel, environment, phong, noise: None, specular: Some(gain), carbon: None }
 }
 
 /// The exterior's styles for the lit lamps' parts: the lens with the livery's lit lamps' map (`<car>_lights_on`, on the
@@ -376,6 +407,7 @@ fn finish(m: &Material) -> Option<Finish> {
         fresnel,
         environment,
         phong,
+        specular: None,
         noise: (kind == "flock").then(|| get("NoiseSize", 10.0)),
         carbon: carbon.then(|| {
             [
@@ -1843,6 +1875,51 @@ mod tests {
         assert_eq!(bump, Some("cars\\Car\\textures\\dr_int_carbon_vector.dds"));
         // Dials, lamps and displays (no own specular map) have no finish.
         assert_eq!(key("int_dials", "Finish"), None);
+    }
+
+    #[test]
+    fn the_exteriors_reflecting_materials_have_dirt_finishes() {
+        let fresnel = [("FresnelMin", 0.8), ("FresnelMax", 1.0), ("FresnelPower", 5.0)];
+        let styled = |id: &str, constants: &[(&str, f32)]| {
+            let style = exterior_style(
+                "cme",
+                &material(id, "car.fx", &[], &[constants, &[("OcclusionMapScale", 0.4)]].concat()),
+            )
+            .unwrap();
+            let materials = BTreeMap::from([(style.material(), style)]);
+            let styles: BTreeMap<String, &Style> = materials.iter().map(|(k, s)| (k.clone(), s)).collect();
+            let sections = rbr_formats::ini::parse(&shaders_file("Car", &styles, false)).unwrap();
+            let name = materials.keys().next().unwrap().clone();
+            let section = rbr_formats::car_parts::section(&sections, &material_name(&name)).unwrap();
+            let keys: BTreeMap<String, String> =
+                ["Finish", "FinishFresnel", "FinishEnvironment", "FinishPhong", "FinishSpecular"]
+                    .iter()
+                    .filter_map(|k| Some((k.to_string(), section.get(k)?.to_owned())))
+                    .collect();
+            move |key: &str| keys.get(key).cloned()
+        };
+        let metal = styled("Shiny Metal", &fresnel);
+        assert_eq!(metal("Finish").as_deref(), Some("plain"));
+        assert_eq!(metal("FinishFresnel").as_deref(), Some("0.8 1 5"));
+        assert_eq!(metal("FinishEnvironment").as_deref(), Some("1 1 1 0"));
+        assert_eq!(metal("FinishPhong").as_deref(), Some("10 1 1 1 1"));
+        assert_eq!(metal("FinishSpecular").as_deref(), Some("1.8"));
+        assert_eq!(exterior("Shiny Metal").unwrap().material(), "main40_shiny_metal");
+        assert_eq!(exterior("Car Body Paint").unwrap().material(), "main40");
+        assert_eq!(exterior("Car Body Paint").unwrap().finish, None);
+        let matt = styled("Matt", &[("SpecularHighlightPower", 20.0), ("SpecularHighlightStrength", 2.0)]);
+        assert_eq!(matt("FinishEnvironment"), None);
+        assert_eq!(matt("FinishPhong").as_deref(), Some("20 2 1 1 1"));
+        let wheel = styled("Tarmac Wheel", &[("MetallicSpecularPower", 6.0)]);
+        assert_eq!(wheel("FinishSpecular").as_deref(), Some("2"));
+        assert_eq!(wheel("FinishPhong").as_deref(), Some("6 1 1 1 1"));
+        assert_eq!(styled("Lights Pod", &fresnel)("Finish").as_deref(), Some("gated"));
+        let satin = styled("Lights Satin", &[("FresnelMin", 0.0), ("FresnelMax", 0.0)]);
+        assert_eq!(satin("FinishEnvironment"), None);
+        assert_eq!(satin("FinishFresnel").as_deref(), Some("0 0 1"));
+        for id in ["Discs", "Grills", "Suspension", "Caliper"] {
+            assert_eq!(exterior(id).unwrap().finish, None, "{id}");
+        }
     }
 
     #[test]
