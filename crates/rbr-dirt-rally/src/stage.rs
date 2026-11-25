@@ -178,7 +178,6 @@ pub fn convert(input: &Input, options: &Options) -> Result<Report, String> {
     Ok(Report { folder, ..report })
 }
 
-
 /// One mesh being gathered: deduplicated vertices in the BTB mesh's axes (x, height, y) about the origin.
 #[derive(Default)]
 struct Builder {

@@ -1,22 +1,20 @@
 //! AC point-to-point course to an exported BTB stage. Mesh files use AC's Direct3D axes;
 //! physics/driveline files use `(x,z,y)`, matching the BTB loader's axis swap.
 use crate::assetto::{ai, csp, kn5, material, multilayer, trees};
+use kn5::Matrix;
+use rbr_btb::circuit::FAR;
+use rbr_btb::scene::Grass;
 use rbr_btb_writer::{
-    materials,
     control::Control,
     corridor::{ground_near, Corridor},
     geometry::{Grid, Triangle, COLLISION_TILE, FAR_REACH, SCENERY_CELL},
-    ini,
+    ini, materials,
     mesh::{self as xwrite, XMesh},
     objects::Objects,
     pacenotes,
     road::{self, Line},
-    stage,
-    textures,
+    stage, textures,
 };
-use kn5::Matrix;
-use rbr_btb::circuit::FAR;
-use rbr_btb::scene::Grass;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
@@ -1120,8 +1118,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         0 => format!("ac\\{model_index}_{mat_index}"),
                         p => format!("ac\\{model_index}_{mat_index}_g{p}"),
                     };
-                    let extras =
-                        materials::Extras { grass: grass(&mat.name), ..bank.extras(&model, mat_index)? }.stored_at(gain);
+                    let extras = materials::Extras { grass: grass(&mat.name), ..bank.extras(&model, mat_index)? }
+                        .stored_at(gain);
                     materials::section_with(
                         &mut materials,
                         &name,

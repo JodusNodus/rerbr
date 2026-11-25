@@ -1,8 +1,8 @@
 //! AC material/surface translation. A surface's name gives its RBR class; its declared friction picks the id.
 use crate::assetto::kn5::{Material, Model};
 use crate::assetto::{detail, multilayer};
-use rbr_btb_writer::materials::{decimal, Extras, Layers};
 use rbr_btb_writer::bank::TextureZip;
+use rbr_btb_writer::materials::{decimal, Extras, Layers};
 use rbr_btb_writer::textures;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

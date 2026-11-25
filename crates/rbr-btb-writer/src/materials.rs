@@ -65,7 +65,6 @@ pub struct Layers {
     pub blend: Option<f32>,
 }
 
-
 /// A float with a decimal point and no exponent: BTB reads a bare `1,1,1` as 1.1 and 1.
 pub fn decimal(v: f32) -> String {
     let text = format!("{v:.6}");
@@ -149,4 +148,3 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     }
     out.push('\n');
 }
-

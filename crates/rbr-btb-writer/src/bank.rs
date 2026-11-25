@@ -4,10 +4,13 @@ use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::Path;
 
+/// The files stored under one hash: their names and bytes.
+type Bucket = Vec<(String, Vec<u8>)>;
+
 pub struct TextureZip {
     zip: zip::ZipWriter<std::fs::File>,
     /// Hash buckets retain output filenames; a hash match is checked against the written payload.
-    seen: BTreeMap<(u64, usize), Vec<(String, Vec<u8>)>>,
+    seen: BTreeMap<(u64, usize), Bucket>,
     /// The files written.
     pub count: usize,
 }
