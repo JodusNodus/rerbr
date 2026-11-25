@@ -9,7 +9,12 @@ Usage:
   rbr-dirt-rally add-car CAR [--livery N] [--cars DIR] [--install INSTALL]
   rbr-dirt-rally car CAR --class CLASS --template CARFOLDER --out DIR [--livery N] [--name NAME] [--install INSTALL]
   rbr-dirt-rally import LOCATION/AREA/route_N [--install INSTALL] [--name NAME] [--out DIR] [--replace]
-         [--draw-corridor M] [--collision-corridor M] [--lod M]
+         [--draw-corridor M] [--collision-corridor M] [--lod M] [--no-preview]
+  rbr-dirt-rally preview STAGE_FOLDER... [--viewer PATH] [--maps DIR]
+
+import renders the stage's preview picture afterwards with the `viewer` beside this program (and the install's Maps folder,
+$RBR_DATA/Maps): a failure there is reported and does not fail the import. preview makes or remakes it for stages already
+converted (`preview.png` and `track.ini`'s splashscreen).
 
 INSTALL is the game folder (or its data folder); without it, the Steam libraries are searched.
 Source game files are read in place. CAR is the folder under cars/models (cme); the livery is its first without
@@ -51,6 +56,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         Some("import") => import(args),
+        Some("preview") => preview(args),
         Some("car") => car(args),
         Some("add-car") => add_car(args),
         Some(other) => developer(other, args),
@@ -193,9 +199,14 @@ fn import(args: impl Iterator<Item = String>) -> Result<(), String> {
     let control = rbr_ac_tracks::btb::control::Control::new(log, Default::default());
     let mut options = crate::import::Options::new(control);
     let mut path = None;
+    let mut previews = true;
     while let Some(flag) = args.next() {
         if flag == "--replace" {
             options.replace = true;
+            continue;
+        }
+        if flag == "--no-preview" {
+            previews = false;
             continue;
         }
         let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
@@ -213,5 +224,59 @@ fn import(args: impl Iterator<Item = String>) -> Result<(), String> {
     let report = crate::import::import(&install(path.as_deref())?, &id, &options)?;
     println!("{}", report.folder.display());
     println!("{report:?}");
+    if previews {
+        if let Err(e) = preview_stage(&report.folder, None, None) {
+            eprintln!("rbr-dirt-rally: no preview picture ({e}); the launcher shows the driveline");
+        }
+    }
     Ok(())
+}
+
+/// Renders `folder`'s preview with the `viewer` (default: the one beside this program) and the maps (default:
+/// `$RBR_DATA/Maps`).
+fn preview_stage(folder: &Path, viewer: Option<&Path>, maps: Option<&Path>) -> Result<(), String> {
+    let viewer = match viewer {
+        Some(v) => v.to_owned(),
+        None => std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .with_file_name(format!("viewer{}", std::env::consts::EXE_SUFFIX)),
+    };
+    if !viewer.is_file() {
+        return Err(format!("no viewer at {}", viewer.display()));
+    }
+    let maps = match maps {
+        Some(m) => m.to_owned(),
+        None => std::env::var_os("RBR_DATA").map(|d| Path::new(&d).join("Maps")).ok_or("RBR_DATA is not set")?,
+    };
+    let scratch = std::env::temp_dir().join(format!("rbr-dirt-rally-preview-{}", std::process::id()));
+    let png = crate::preview::render(folder, &viewer, &maps, &scratch)?;
+    println!("{}", png.display());
+    Ok(())
+}
+
+fn preview(args: impl Iterator<Item = String>) -> Result<(), String> {
+    let (mut folders, mut viewer, mut maps) = (Vec::new(), None, None);
+    let mut args = args;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--viewer" => viewer = Some(PathBuf::from(args.next().ok_or("--viewer needs a path")?)),
+            "--maps" => maps = Some(PathBuf::from(args.next().ok_or("--maps needs a folder")?)),
+            _ => folders.push(PathBuf::from(arg)),
+        }
+    }
+    if folders.is_empty() {
+        return Err("preview needs a stage folder".into());
+    }
+    let mut failed = 0;
+    for folder in &folders {
+        if let Err(e) = preview_stage(folder, viewer.as_deref(), maps.as_deref()) {
+            eprintln!("rbr-dirt-rally: {}: {e}", folder.display());
+            failed += 1;
+        }
+    }
+    if failed > 0 {
+        Err(format!("{failed} of {} previews failed", folders.len()))
+    } else {
+        Ok(())
+    }
 }
