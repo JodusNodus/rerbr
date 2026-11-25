@@ -493,6 +493,7 @@ impl Renderer {
         if let Some(taa) = &mut self.taa {
             taa.reset();
         }
+        self.sun_mask.reset_history();
         self.reset_parked();
     }
 

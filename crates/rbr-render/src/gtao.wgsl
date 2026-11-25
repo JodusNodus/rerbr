@@ -1,5 +1,5 @@
-// Ground-truth ambient occlusion in place of the contact shading (`renderer::gtao`, `Enhance::gtao`, ours, a proof of
-// concept), appended to `shader.wgsl`. After Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
+// Ground-truth ambient occlusion in place of the old contact shading (`renderer::gtao`, `Enhance::lighting`, ours), appended to
+// `shader.wgsl`. After Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
 // Occlusion", and Intel's XeGTAO (MIT) for the slice set-up: per half-size texel a few slices through the view vector, in
 // each the highest horizon either way from the depth, integrated against the face's cosine. Never the sun's: the stage
 // reads it on the sky's and bounce's light only (`contact_at`, `combine_ao`).
@@ -200,13 +200,9 @@ fn fs_gtao_resolve(v: SkyOut) -> @location(0) vec4<f32> {
     return vec4<f32>(visibility, centre.y, 0.0, 1.0);
 }
 
-// The stage's contact shading at the pixel `p` at `world`: the half-size texel's, or with `Enhance::gtao`
-// (`frame.sun_shadow.w`) the four nearest texels' by how near their view distance is to the pixel's (a silhouette's
-// far side takes nothing of its near side's).
+// The stage's contact shading at the pixel `p` at `world`: the four nearest half-size texels' by how near their view
+// distance is to the pixel's (a silhouette's far side takes nothing of its near side's).
 fn contact_at(p: vec2<i32>, world: vec3<f32>) -> f32 {
-    if (frame.sun_shadow.w == 0.0) {
-        return textureLoad(sun_contact, p / 2, 0).r;
-    }
     let at = gtao_depth(world);
     let last = vec2<i32>(textureDimensions(sun_contact)) - 1;
     let u = vec2<f32>(p) / 2.0;
@@ -224,9 +220,8 @@ fn contact_at(p: vec2<i32>, world: vec3<f32>) -> f32 {
     return sum / total;
 }
 
-// The baked occlusion with the screen's: they see the same stage, so they are not multiplied under `Enhance::gtao`
-// (the darker of the two stands: the bake's metres, the screen's centimetres at the car, the crowd and the ground's
-// detail); else as before.
+// The baked occlusion with the screen's: they see the same stage, so they are not multiplied (the darker of the two
+// stands: the bake's metres, the screen's centimetres at the car, the crowd and the ground's detail).
 fn combine_ao(baked: f32, screen: f32) -> f32 {
-    return select(baked * screen, min(baked, screen), frame.sun_shadow.w != 0.0);
+    return min(baked, screen);
 }

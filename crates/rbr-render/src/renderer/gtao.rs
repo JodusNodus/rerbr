@@ -1,5 +1,5 @@
-//! Ground-truth ambient occlusion in place of the contact shading ([`Enhance::gtao`](super::Enhance::gtao); ours, a
-//! proof of concept, `gtao.wgsl`): half the frame's size, from the depth the prepass laid, resolved over its own history
+//! Ground-truth ambient occlusion in place of the old contact shading ([`Enhance::lighting`](super::Enhance::lighting);
+//! ours, `gtao.wgsl`): half the frame's size, from the depth the prepass laid, resolved over its own history
 //! (reprojected by the previous frame's matrix, kept within the neighbours' range), into the texture the stage's
 //! draws read as their contact shading ([`SunMask`](super::sun_mask::SunMask)): the visibility, and the view distance
 //! it stands at for the stage's bilateral upsample.
@@ -11,8 +11,7 @@ use glam::Mat4;
 use std::cell::Cell;
 
 pub(super) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg16Float;
-/// The occlusion's radius in metres, and the power its visibility is raised to (`RERBR_GTAO_RADIUS`,
-/// `RERBR_GTAO_POWER` replace them for tuning).
+/// The occlusion's radius in metres, and the power its visibility is raised to.
 const RADIUS: f32 = 1.5;
 const POWER: f32 = 1.5;
 /// The frame numbers the noise cycles through.
@@ -32,11 +31,30 @@ pub(super) struct Gtao {
     layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
     targets: Targets,
-    /// The last frame's clip matrix, `None` before the first and after a resize.
+    /// The drawn view's last frame's clip matrix, `None` before the first and after a resize.
     previous: Cell<Option<Mat4>>,
     frame: Cell<u32>,
-    radius: f32,
-    power: f32,
+}
+
+/// A view's own history while another is drawn ([`Gtao::exchange`], `super::views`): the last result, its groups, the
+/// last clip matrix and the frames drawn.
+pub(super) struct GtaoHistory {
+    history: History,
+    previous: Option<Mat4>,
+    frame: u32,
+}
+
+impl GtaoHistory {
+    /// Starts it again with the view's next frame.
+    pub(super) fn reset(&mut self) {
+        self.previous = None;
+    }
+}
+
+struct History {
+    texture: wgpu::Texture,
+    /// The raw pass's (the history in the raw's place: a texture is not read where it is drawn) and the resolve's.
+    groups: [wgpu::BindGroup; 2],
 }
 
 struct Targets {
@@ -44,9 +62,7 @@ struct Targets {
     /// What the stage reads, and its copy the next frame's resolve reads.
     contact: wgpu::Texture,
     contact_view: wgpu::TextureView,
-    history: wgpu::Texture,
-    /// The raw pass's (the history in the raw's place: a texture is not read where it is drawn) and the resolve's.
-    groups: [wgpu::BindGroup; 2],
+    history: History,
     size: (u32, u32),
 }
 
@@ -67,7 +83,6 @@ impl Gtao {
         let pipeline =
             |entry| gpu_util::full_screen_pipeline(device, entry, shader, ("vs_sky", entry), &layouts, &targets, &[]);
         let uniform = gpu_util::uniform_buffer(device, "gtao", std::mem::size_of::<Run>());
-        let env = |name: &str, default: f32| std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
         Gtao {
             raw_pipeline: pipeline("fs_gtao"),
             resolve_pipeline: pipeline("fs_gtao_resolve"),
@@ -76,13 +91,30 @@ impl Gtao {
             uniform,
             previous: Cell::new(None),
             frame: Cell::new(0),
-            radius: env("RERBR_GTAO_RADIUS", RADIUS),
-            power: env("RERBR_GTAO_POWER", POWER),
         }
     }
 
     pub(super) fn resize(&mut self, device: &wgpu::Device, size: (u32, u32)) {
         self.targets = Targets::new(device, &self.layout, &self.uniform, size);
+        self.previous.set(None);
+    }
+
+    /// Puts `history` in place of the drawn view's (a fresh one when `None`) and gives the drawn view's back.
+    pub(super) fn exchange(&mut self, device: &wgpu::Device, history: Option<GtaoHistory>) -> GtaoHistory {
+        let history = history.unwrap_or_else(|| GtaoHistory {
+            history: self.targets.new_history(device, &self.layout, &self.uniform),
+            previous: None,
+            frame: 0,
+        });
+        GtaoHistory {
+            history: std::mem::replace(&mut self.targets.history, history.history),
+            previous: self.previous.replace(history.previous),
+            frame: self.frame.replace(history.frame),
+        }
+    }
+
+    /// Starts the history again with the next frame.
+    pub(super) fn reset(&self) {
         self.previous.set(None);
     }
 
@@ -104,11 +136,11 @@ impl Gtao {
         self.frame.set(n.wrapping_add(1));
         let run = Run {
             previous: previous.unwrap_or(view_projection).to_cols_array_2d(),
-            run: [(n % PHASES + 1) as f32, self.radius, self.power, f32::from(u8::from(previous.is_none()))],
+            run: [(n % PHASES + 1) as f32, RADIUS, POWER, f32::from(u8::from(previous.is_none()))],
         };
         queue.write_buffer(&self.uniform, 0, bytes_of(&run));
         let targets = &self.targets;
-        let groups = [[frame, &targets.groups[0], depth], [frame, &targets.groups[1], depth]];
+        let groups = [[frame, &targets.history.groups[0], depth], [frame, &targets.history.groups[1], depth]];
         gpu_util::full_screen_pass(encoder, "gtao", &targets.raw, gpu_util::CLEAR, &self.raw_pipeline, &groups[0]);
         gpu_util::full_screen_pass(
             encoder,
@@ -121,7 +153,7 @@ impl Gtao {
         let (width, height) = targets.size;
         encoder.copy_texture_to_texture(
             targets.contact.as_image_copy(),
-            targets.history.as_image_copy(),
+            targets.history.texture.as_image_copy(),
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
     }
@@ -130,24 +162,30 @@ impl Gtao {
 impl Targets {
     fn new(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, uniform: &wgpu::Buffer, size: (u32, u32)) -> Targets {
         let size = (size.0.div_ceil(2).max(1), size.1.div_ceil(2).max(1));
-        let texture = |label, usage| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: FORMAT,
-                usage,
-                view_formats: &[],
-            })
-        };
-        let attachment = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
-        let raw = texture("gtao raw", attachment).create_view(&Default::default());
-        let contact = texture("gtao", attachment | wgpu::TextureUsages::COPY_SRC);
-        let history = texture("gtao history", wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
+        let raw = texture(device, "gtao raw", size, ATTACHMENT).create_view(&Default::default());
+        let contact = texture(device, "gtao", size, ATTACHMENT | wgpu::TextureUsages::COPY_SRC);
         let contact_view = contact.create_view(&Default::default());
-        let history_view = history.create_view(&Default::default());
+        let history = History::new(device, layout, uniform, &raw, size);
+        Targets { raw, contact, contact_view, history, size }
+    }
+
+    /// A history of its own over the same targets.
+    fn new_history(&self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout, uniform: &wgpu::Buffer) -> History {
+        History::new(device, layout, uniform, &self.raw, self.size)
+    }
+}
+
+impl History {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        uniform: &wgpu::Buffer,
+        raw: &wgpu::TextureView,
+        size: (u32, u32),
+    ) -> History {
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let texture = texture(device, "gtao history", size, usage);
+        let history = texture.create_view(&Default::default());
         let group = |read: &wgpu::TextureView| {
             let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
             device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -155,12 +193,27 @@ impl Targets {
                 layout,
                 entries: &[
                     entry(14, wgpu::BindingResource::TextureView(read)),
-                    entry(15, wgpu::BindingResource::TextureView(&history_view)),
+                    entry(15, wgpu::BindingResource::TextureView(&history)),
                     entry(16, uniform.as_entire_binding()),
                 ],
             })
         };
-        let groups = [group(&history_view), group(&raw)];
-        Targets { raw, contact, contact_view, history, groups, size }
+        History { groups: [group(&history), group(raw)], texture }
     }
+}
+
+const ATTACHMENT: wgpu::TextureUsages =
+    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING);
+
+fn texture(device: &wgpu::Device, label: &str, size: (u32, u32), usage: wgpu::TextureUsages) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage,
+        view_formats: &[],
+    })
 }

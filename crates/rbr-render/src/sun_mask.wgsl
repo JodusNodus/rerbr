@@ -24,24 +24,6 @@ fn fs_sun_mask(v: SkyOut) -> @location(0) vec4<f32> {
     return vec4<f32>(mask_sun(world, n));
 }
 
-// The contact shading (`contact_light`) at half the frame's size, from the depth: each texel the pixel at its
-// top left corner. The stage reads it at its pixel's (`CONTACT`).
-@fragment
-fn fs_contact(v: SkyOut) -> @location(0) vec4<f32> {
-    let p = vec2<i32>(v.clip.xy) * 2;
-    let depth = textureLoad(scene_depth, p, 0);
-    if (depth == 0.0) {
-        return vec4<f32>(1.0);
-    }
-    let world = mask_world(p, depth);
-    // The cabin's (laid in the in-car view, `renderer::pipelines::prepassed`) within its reach of the eye.
-    let cabin = in_car() && distance(world, frame.eye.xyz) < CABIN_CONTACT_REACH;
-    if (cabin) {
-        return vec4<f32>(contact_light(p, world, CABIN_CONTACT_RADIUS, CABIN_CONTACT_STRENGTH));
-    }
-    return vec4<f32>(contact_light(p, world, CONTACT_RADIUS, CONTACT_STRENGTH));
-}
-
 fn mask_sun(world: vec3<f32>, n: vec3<f32>) -> f32 {
     if (frame.sun_shadow.x == 0.0) {
         return 1.0;
