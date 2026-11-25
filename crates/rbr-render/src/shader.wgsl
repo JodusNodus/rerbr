@@ -1337,8 +1337,15 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // other classes reflect where the diffuse alpha is (`CarPaint`: the reflection times `t0.a`).
     let nv = clamp(dot(n, view), 0.0, 1.0);
     var f = clamp(0.125 + 0.875 * pow(1.0 - nv, 5.0), mode.fresnel.x, mode.fresnel.y) * mode.fresnel.z;
-    // With the day's light a dielectric's (Schlick, F0 0.04) where the class reflects at all.
-    let physical = day_lit();
+    // With the day's light a dielectric's (Schlick, F0 0.04) where the class reflects at all. In the cockpit the paint
+    // seen through the glass (the bonnet and wings: the body outside the interior set, and in it the paint open to the
+    // sky as `cabin_light` takes it) takes the outside view's clear coat too. Not `cabin_open`'s cone: a bonnet's
+    // grazing reflection, toward the horizon ahead, lies outside its cone about the sky it sees, and was cut.
+    var cockpit_coat = 0.0;
+    if (CABIN && inside && day_on() && lit_class() == 1u && mode.fresnel.z != 0.0) {
+        cockpit_coat = select(1.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), cabin_face);
+    }
+    let physical = day_lit() || cockpit_coat > 0.0;
     if (physical) {
         f = select(0.0, 0.04 + 0.96 * pow(1.0 - nv, 5.0), mode.fresnel.y * mode.fresnel.z > 0.0);
     }
@@ -1369,7 +1376,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         // (`cabin_sheen`), whatever its class's Fresnel (the Clio Rally3's dash, `Kf` 1 from 0, read as glass).
         if (cabin_face) {
             let paint = select(0.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), mode.fresnel.z != 0.0);
-            let open = shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
+            // With the day's light the coat takes the open paint's reflection.
+            let open = select(shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n)), vec3<f32>(0.0), physical);
             if (cabin_finished()) {
                 let mirror = cabin_finish(v, n, view, gloss);
                 shaded = pow(mix(pow(shaded, vec3<f32>(2.2)), pow(mirror.rgb, vec3<f32>(2.2)), mirror.a), vec3<f32>(1.0 / 2.2));
@@ -1383,7 +1391,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (physical) {
             let sky_dim = mix(1.0, WET_SKY, film);
             let roughness = COAT_ROUGHNESS * (1.0 - film * (1.0 - WET_ROUGHNESS));
-            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0) * alpha * clean;
+            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0) * alpha * clean
+                * select(1.0, cockpit_coat, inside);
             if (lit_class() == 1u && car_look()) {
                 coat = min(coat * COAT_STRENGTH, 1.0);
             }

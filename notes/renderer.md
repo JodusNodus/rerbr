@@ -1851,6 +1851,14 @@ scene pass (RX 9060 XT) 3.35 to 2.98 ms on 621 i20, 2.67 to 2.64 on Alpes GC8: t
 behind the dash. Tried and dropped: the near occlusion at twice its weight on the bounce too (recessed dash faces
 black), the original textures in place of the upscaler's (grainier, no less flat).
 
+Cockpit clear coat (2026-11-25, `cockpit_coat` in `shader.wgsl`): by day the paint seen from the cockpit (the body
+outside the interior set, and in it paint open to the sky by `CABIN_OUT`) takes the outside view's clear coat (Schlick,
+`environment_reflectance` at `COAT_ROUGHNESS`, `COAT_STRENGTH`, `paint_mirrored`) in place of the game's reflection; all
+cars. Without `cabin_open`: its cone about the sky the bonnet sees left out the bonnet's grazing reflection toward the
+horizon ahead, so the bonnet read flat (debug view: open share 1, cone 0 over most of the DiRT Impreza's bonnet). Not in
+the cockpit: rain on the paint (`wet_paint`), the body's occlusion, the surroundings cube (not drawn in the cockpit, the
+probes stand in). Night unchanged.
+
 Interior sheen (2026-10-31, `cabin_sheen`): every cabin face but paint open to the sky (the bonnet through the glass,
 `CABIN_OUT`) reflects as a low-gloss plastic, `environment_reflectance` at roughness 0.8 (2 to 3 %) of the cube's
 level 3, where the reflected ray leaves the car (`cabin_open`). A class with a Fresnel kept the paint's reflection: the
