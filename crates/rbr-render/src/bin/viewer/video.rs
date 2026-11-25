@@ -290,7 +290,7 @@ fn draw_frame(
         characters.apply(renderer, &[view_projection]);
     }
     draw_particles(scene, renderer, view_projection);
-    draw_car(scene, renderer, *shown, ChaseLook::default(), args.fov, false);
+    draw_car(scene, renderer, *shown, false);
     if let (Some(ghost), Some(playback)) = (&mut scene.ghost, &scene.playback) {
         let hud = rbr_render::ghost::hud_time(scene.live.as_ref());
         ghost.apply(renderer, playback, hud, view_projection);

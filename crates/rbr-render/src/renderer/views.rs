@@ -62,6 +62,10 @@ impl Renderer {
         };
         self.parked[self.view] = Some(outgoing);
         self.view = index;
+        // The blur reads the drawn view's resolve uniform: bound to the last view's, it blurred by that view's motion.
+        if let (Some(taa), Some(motion), Some(blur)) = (&self.taa, &self.motion, &mut self.motion_blur) {
+            blur.bind(&self.device, taa.uniform(), motion.view(), &self.depth_view);
+        }
     }
 
     /// A new view's temporal anti-aliasing for the frame's targets, when it is on.

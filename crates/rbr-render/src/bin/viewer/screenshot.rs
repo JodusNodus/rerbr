@@ -2,7 +2,7 @@
 
 use crate::args::Args;
 use crate::draw::{
-    demo_hint, dial_values, draw_demo, draw_particles, readout, scripted_camera, show_crew, start_camera,
+    car_lens, demo_hint, dial_values, draw_demo, draw_particles, readout, scripted_camera, show_crew, start_camera,
     step_characters,
 };
 use crate::scene::Scene;
@@ -143,13 +143,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         let screen = triple::screen(size, args.screens.is_some());
         // The school demo replaces the player's camera: the chase follows the demo car, the ride watches
         // from the cockpit (or the bonnet).
-        let demo_lens = match (&demo, scene.playback.as_ref(), scene.mounts.as_ref()) {
-            (Some((true, car)), Some(playback), Some(mounts)) => {
-                Some(playback.lens_at(mounts, rbr_render::school_demo::ride_view(mounts), car, fov))
-            }
-            (Some((false, car)), Some(playback), _) => Some(playback.camera_at(car, look).lens(playback.chase_fov)),
-            _ => None,
-        };
+        let demo_lens = demo.as_ref().and_then(|(ride, car)| car_lens(scene, shown, Some((car, *ride)), look, fov));
         let lens = match (camera, demo_lens) {
             (Some(camera), _) => camera.lens(fov),
             (None, Some(lens)) => lens,
@@ -165,7 +159,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         draw_particles(scene, &mut renderer, view_projection);
         // The school demo draws the player's car at the replay's pose; else the drive draws as usual.
         let demo_drawn = match &demo {
-            Some((ride, car)) => draw_demo(scene, &mut renderer, *ride, car, look, fov).is_some(),
+            Some((ride, car)) => draw_demo(scene, &mut renderer, *ride, car),
             None => false,
         };
         if !demo_drawn {

@@ -144,9 +144,21 @@ impl MotionBlur {
         depth: &wgpu::TextureView,
     ) {
         self.target = target(device, size);
-        self.group = group(device, &self.layout, &self.sampler, &self.params, uniform, &self.target, motion, depth);
+        self.bind(device, uniform, motion, depth);
         // A new target must not carry the old frame's motion: the strength restarts with no previous frame.
         self.previous = None;
+    }
+
+    /// Reads the drawn view's temporal anti-aliasing's `uniform` (each view of a triple screen has its own, with its
+    /// own `view_to_prev` and history reset), the frame's `motion` and `depth`.
+    pub(crate) fn bind(
+        &mut self,
+        device: &wgpu::Device,
+        uniform: &wgpu::Buffer,
+        motion: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+    ) {
+        self.group = group(device, &self.layout, &self.sampler, &self.params, uniform, &self.target, motion, depth);
     }
 
     /// Gathers [`MotionBlur::target`] along each pixel's blur vector into `scene` (the post pass's): `time` is the
