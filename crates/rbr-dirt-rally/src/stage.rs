@@ -3,6 +3,7 @@
 //! `rbr_ac_tracks`' AC conversion writes, through `rbr_btb_writer`: the mesh, texture and pacenote writers.
 use crate::surface;
 use rbr_btb_writer::bank::TextureZip;
+use rbr_btb_writer::stage::{publish, Destination};
 use rbr_btb_writer::materials::{self, Extras, Layers};
 use rbr_btb_writer::{
     control::Control,
@@ -163,44 +164,17 @@ pub fn convert(input: &Input, options: &Options) -> Result<Report, String> {
     if options.name.is_empty() || name.components().count() != 1 || name.file_name().is_none() {
         return Err("--name must be one folder name".into());
     }
-    for (key, value) in [
-        ("draw corridor", options.draw_corridor),
-        ("collision corridor", options.collision_corridor),
-        ("LOD", options.lod),
-    ] {
-        if !value.is_finite() || !(1. ..=5000.).contains(&value) {
-            return Err(format!("{key} must be between 1 and 5000 m"));
-        }
-    }
-    let parent = &options.out;
-    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let destination = parent.join(&options.name);
-    if destination.exists() && (!options.replace || !destination.join(CONVERSION_FILE).is_file()) {
-        return Err(format!("{} exists; --replace only replaces stages this converter made", destination.display()));
-    }
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-    let staging = parent.join(format!(".dr-stage-{}-{stamp}", std::process::id()));
-    std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
-    let mut report = match build(input, options, &staging) {
-        Ok(report) => report,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(e);
-        }
+    rbr_btb_writer::stage::check_distances(options.draw_corridor, options.collision_corridor, options.lod)?;
+    let to = Destination {
+        out: &options.out,
+        name: &options.name,
+        replace: options.replace,
+        marker: CONVERSION_FILE,
+        prefix: "dr",
+        replaces: "this converter made",
     };
-    if destination.exists() {
-        let backup = parent.join(format!(".dr-backup-{}-{stamp}", std::process::id()));
-        std::fs::rename(&destination, &backup).map_err(|e| e.to_string())?;
-        if let Err(e) = std::fs::rename(&staging, &destination) {
-            let _ = std::fs::rename(&backup, &destination);
-            return Err(e.to_string());
-        }
-        std::fs::remove_dir_all(backup).map_err(|e| e.to_string())?;
-    } else {
-        std::fs::rename(&staging, &destination).map_err(|e| e.to_string())?;
-    }
-    report.folder = destination;
-    Ok(report)
+    let (report, folder) = publish(&to, |staging| build(input, options, staging))?;
+    Ok(Report { folder, ..report })
 }
 
 /// Plan cells within `radius` of the line, `cell` metres square; a triangle is in when its plan box touches one.
