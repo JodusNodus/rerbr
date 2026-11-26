@@ -82,6 +82,11 @@ struct Table {
 @group(0) @binding(9) var<storage, read> squares: array<vec4<u32>>;
 // `bead_squares`' own bindings (group 1), the same table written (`squares` is its reader).
 @group(1) @binding(0) var<storage, read_write> made: array<vec4<u32>>;
+// What a film cell's noise is over the glass, baked once (`bake_statics`): per pane kind (windscreen, side window) the
+// waves' slope (xy), the blotch (z) and the outside's mottle (w), `STATIC_TEXELS` a cell, sampled across the cells.
+@group(0) @binding(10) var statics: texture_2d_array<f32>;
+@group(1) @binding(1) var baked: texture_storage_2d_array<rgba16float, write>;
+const STATIC_TEXELS: f32 = 16.0;
 
 struct Instance {
     @location(0) centre: vec3<f32>,
@@ -229,6 +234,37 @@ fn wet_noise(p: vec2<f32>, pane: f32) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
+// The outside's mottle over the film at `cell` (cells from the low corner), `side` on a side window.
+fn film_mottle(cell: vec2<f32>, pane: f32) -> f32 {
+    let p = vec2<f32>(cell.x, cell.y / WET_STREAK);
+    return 0.65 * wet_noise(p / 3.0, pane) + 0.35 * wet_noise(vec2<f32>(cell.x, cell.y / 2.0), pane + 2.0);
+}
+
+// The film's noise at `cell`: the waves' slope (xy, the shift's direction and size), the blotch (z), the mottle (w).
+fn film_noise(cell: vec2<f32>, pane: f32) -> vec4<f32> {
+    let p = cell * 2.0;
+    let n0 = wet_noise(p, pane + 4.0);
+    let slope = vec2<f32>(wet_noise(p + vec2<f32>(0.25, 0.0), pane + 4.0) - n0, wet_noise(p + vec2<f32>(0.0, 0.25), pane + 4.0) - n0) * 4.0;
+    let blotch = wet_noise(vec2<f32>(cell.x * 1.3, cell.y * 1.3 / WET_STREAK), pane + 8.0);
+    return vec4<f32>(slope, blotch, film_mottle(cell, pane));
+}
+
+@compute @workgroup_size(8, 8)
+fn bake_statics(@builtin(global_invocation_id) id: vec3<u32>) {
+    let size = textureDimensions(baked);
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+    let cell = (vec2<f32>(id.xy) + 0.5) / STATIC_TEXELS;
+    textureStore(baked, id.xy, id.z, film_noise(cell, f32(id.z)));
+}
+
+// `film_noise` as baked, at `cell` (film cells from the pane's low corner).
+fn film_statics(cell: vec2<f32>, side: bool) -> vec4<f32> {
+    let size = vec2<f32>(textureDimensions(statics).xy);
+    return textureSampleLevel(statics, scene_sampler, cell * STATIC_TEXELS / size, select(0, 1, side), 0.0);
+}
+
 // The layer over this pixel of a film cell: premultiplied light.
 fn wet_layer(in: Out, film: f32) -> vec4<f32> {
     let cell_px = in.centre.z * 2.0 * frame.screen.y;
@@ -239,9 +275,7 @@ fn wet_layer(in: Out, film: f32) -> vec4<f32> {
     let index = u32(in.alpha);
     let t = in.local * 0.5 + 0.5;
     let cell = vec2<f32>(f32(index % u32(FILM_COLUMNS)), f32(index / u32(FILM_COLUMNS))) + t;
-    let pane = select(0.0, 1.0, in.seed < 0.0);
-    let p = vec2<f32>(cell.x, cell.y / WET_STREAK);
-    let mottle = 0.65 * wet_noise(p / 3.0, pane) + 0.35 * wet_noise(vec2<f32>(cell.x, cell.y / 2.0), pane + 2.0);
+    let mottle = film_statics(cell, in.seed < 0.0).w;
     let a = WET_LIGHT * film * smoothstep(0.4, 0.8, mottle) * fade;
     return vec4<f32>(linear(frame.light.rgb) * a, a);
 }
@@ -646,13 +680,11 @@ fn film_cell(in: Out) -> vec4<f32> {
     let film = film_after(cells, wipe);
     let smeared = smear(wipe);
     let index = u32(in.alpha);
-    let pane = select(0.0, 1.0, in.seed < 0.0);
     let cell = vec2<f32>(f32(index % u32(FILM_COLUMNS)), f32(index / u32(FILM_COLUMNS))) + t;
     // The waves: a noise over the film, its slope the shift.
-    let p = vec2<f32>(cell.x * 2.0, cell.y * 2.0);
-    let n0 = wet_noise(p, pane + 4.0);
-    let slope = vec2<f32>(wet_noise(p + vec2<f32>(0.25, 0.0), pane + 4.0) - n0, (wet_noise(p + vec2<f32>(0.0, 0.25), pane + 4.0) - n0)) * 4.0;
-    let blotch = wet_noise(vec2<f32>(cell.x * 1.3, cell.y * 1.3 / WET_STREAK), pane + 8.0);
+    let noise = film_statics(cell, in.seed < 0.0);
+    let slope = noise.xy;
+    let blotch = noise.z;
     let cover = film * FILM_COVER * smoothstep(0.25, 0.6, blotch * 0.8 + film * 0.55) + smeared * SMEAR_COVER;
     let at = (in.position.xy + slope * (film + smeared) * FILM_WARP) * frame.screen.zw;
     let to_uv = vec2<f32>(frame.screen.y * frame.screen.z, 1.0) * FILM_BLUR;

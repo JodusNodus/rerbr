@@ -166,6 +166,11 @@ pub struct Pass {
     compute_read: wgpu::BindGroupLayout,
     compute_write: wgpu::BindGroupLayout,
     table_groups: (u32, u32),
+    /// The film's noise over the glass (`bake_statics`), made in the first frame drawn.
+    statics: wgpu::TextureView,
+    bake_statics: wgpu::ComputePipeline,
+    bake_write: wgpu::BindGroupLayout,
+    baked: std::cell::Cell<bool>,
 }
 
 /// One layer of one pane's beads' squares, as `glass.wgsl`'s `Table`: the squares of the lattice that the pane's film
@@ -189,6 +194,8 @@ const PANES: usize = 8;
 const TABLES: usize = PANES * 2;
 /// The squares a compute group makes (`@workgroup_size` of `bead_squares`), and how many the buffer first holds.
 const SQUARES_GROUP: usize = 64;
+/// The film's baked noise's texels to a film cell, across and up (`glass.wgsl`'s `STATIC_TEXELS`).
+const STATIC_TEXELS: u32 = 16;
 const FIRST_SQUARES: usize = 1 << 16;
 /// The two layers' lattices (`glass.wgsl`'s `BEAD_PITCH` and `BEAD_TURN`): square size in metres, turn in radians.
 const BEAD_LATTICES: [(f32, f32); 2] = [(0.0055, 0.53), (0.012, -0.97)];
@@ -299,6 +306,15 @@ impl Pass {
                 ),
                 entry(8, wgpu::ShaderStages::FRAGMENT, storage(true)),
                 entry(9, wgpu::ShaderStages::FRAGMENT, storage(true)),
+                entry(
+                    10,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                ),
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -410,6 +426,47 @@ impl Pass {
             cache: None,
         });
         let squares = squares_buffer(device, FIRST_SQUARES);
+        let [columns, rows] = super::model::FILM_CELLS.map(|n| n as u32 * STATIC_TEXELS);
+        let statics = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("glass film noise"),
+                size: wgpu::Extent3d { width: columns, height: rows, depth_or_array_layers: 2 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
+        let bake_write = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glass film noise, write"),
+            entries: &[entry(
+                1,
+                wgpu::ShaderStages::COMPUTE,
+                wgpu::BindingType::StorageTexture {
+                    access: wgpu::StorageTextureAccess::WriteOnly,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                },
+            )],
+        });
+        let bake_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("glass film noise"),
+            bind_group_layouts: &[None, Some(&bake_write)],
+            immediate_size: 0,
+        });
+        let bake_statics = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("glass film noise"),
+            layout: Some(&bake_layout),
+            module: &shader,
+            entry_point: Some("bake_statics"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
         let no_half = half_target(device, format, (1, 1));
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
@@ -444,6 +501,10 @@ impl Pass {
             compute_read,
             compute_write,
             table_groups: (0, 0),
+            statics,
+            bake_statics,
+            bake_write,
+            baked: std::cell::Cell::new(false),
         }
     }
 
@@ -610,6 +671,7 @@ impl Pass {
             TextureView(half),
             self.tables.as_entire_binding(),
             self.squares.as_entire_binding(),
+            TextureView(&self.statics),
         ];
         gpu_util::bind_group(device, "glass", &self.layout, &resources)
     }
@@ -619,6 +681,24 @@ impl Pass {
         let (groups, tables) = self.table_groups;
         if groups == 0 {
             return;
+        }
+        if !self.baked.replace(true) {
+            let write = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("glass film noise, write"),
+                layout: &self.bake_write,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.statics),
+                }],
+            });
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("glass film noise"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.bake_statics);
+            pass.set_bind_group(1, &write, &[]);
+            let [columns, rows] = super::model::FILM_CELLS.map(|n| (n as u32 * STATIC_TEXELS).div_ceil(8));
+            pass.dispatch_workgroups(columns, rows, 2);
         }
         fn at(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
             wgpu::BindGroupEntry { binding, resource: buffer.as_entire_binding() }
