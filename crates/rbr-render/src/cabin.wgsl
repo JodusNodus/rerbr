@@ -84,7 +84,8 @@ fn cabin_light(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outs
         stage = cabin_stage_lit(v.world, n);
     }
     let sunlit = CABIN_SUN * (1.0 - shadowed) * stage * (1.0 - CLOUD_CAR_SHADE * under_cloud);
-    var ambient = INTERIOR_AMBIENT * (CABIN_FLOOR + CABIN_SKY * sky * cabin_window(cabin_seen(v), sky, CABIN_TINT, CABIN_RANGE));
+    let cells = car_cells();
+    var ambient = INTERIOR_AMBIENT * (CABIN_FLOOR + CABIN_SKY * sky * cabin_window(cabin_seen(v), sky, CABIN_TINT, CABIN_RANGE, cells));
     // Paint (the classes that reflect, `Kf` over 0) open to the sky is the body seen through the glass (the bonnet):
     // lit as the outside view lights it, not by the interior's ambient, which blew it out white.
     if (mode.fresnel.z != 0.0) {
@@ -229,7 +230,8 @@ fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_c
     let to_sun = -frame.sun.xyz;
     let cloud = 1.0 - CLOUD_CAR_SHADE * under_cloud;
     let shade = v.bounce_sun;
-    let window = sky * cabin_window(cabin_seen(v), sky, IBL_TINT, CABIN_DAY_RANGE) * shade.x;
+    let cells = car_cells();
+    let window = sky * cabin_window(cabin_seen(v), sky, IBL_TINT, CABIN_DAY_RANGE, cells) * shade.x;
     let sky_through = frame.day_sky.rgb * CABIN_SKY_THROUGH;
     let sun_through = frame.day_sun.rgb * frame.cabin_seen.w;
     var contact = 1.0;
@@ -238,7 +240,7 @@ fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_c
     }
     let luma = dot(v.bounce_sky, vec3<f32>(0.2126, 0.7152, 0.0722));
     let hue = select(vec3<f32>(1.0), v.bounce_sky / max(luma, 1e-6), luma > 1e-6);
-    let seen_out = cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE);
+    let seen_out = cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE, cells);
     let sun = v.sky.x * frame.cabin.x * shade.z * cloud;
     let baked = sky_through * seen_out * shade.y * v.bounce_sky + sun_through * sun * hue;
     var e = sky_through * window * contact + baked * mix(1.0, contact, CABIN_NEAR_BOUNCE) + sun_through * ndl;
@@ -406,15 +408,15 @@ const CABIN_TINT: f32 = 0.3;
 const CABIN_RANGE: vec2<f32> = vec2<f32>(0.25, 2.0);
 const CABIN_DAY_RANGE: vec2<f32> = vec2<f32>(0.03, 4.0);
 
-fn cabin_window(seen: vec3<f32>, share: f32, tint: f32, range: vec2<f32>) -> vec3<f32> {
+fn cabin_window(seen: vec3<f32>, share: f32, tint: f32, range: vec2<f32>, cells: ProbeCells) -> vec3<f32> {
     let length = length(seen);
     if (length < 1e-4) {
         return vec3<f32>(1.0);
     }
     let gathered = smoothstep(0.67, 0.95, length / max(share, 1e-3));
-    let outside = cabin_outside(seen / length, mix(CABIN_LEVELS.x, CABIN_LEVELS.y, gathered));
+    let outside = cabin_outside(seen / length, mix(CABIN_LEVELS.x, CABIN_LEVELS.y, gathered), cells);
     let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
-    let overhead = cabin_outside(vec3<f32>(0.0, 1.0, 0.0), CABIN_LEVELS.x);
+    let overhead = cabin_outside(vec3<f32>(0.0, 1.0, 0.0), CABIN_LEVELS.x, cells);
     let ratio = outside / max(overhead, vec3<f32>(1e-4));
     let grey = dot(ratio, luma);
     let tinted = mix(vec3<f32>(grey), ratio, tint);
@@ -423,10 +425,10 @@ fn cabin_window(seen: vec3<f32>, share: f32, tint: f32, range: vec2<f32>) -> vec
 
 // What lies outside the car along `dir`, blurred to the surroundings cube's `level` (the sky before the cube is drawn),
 // in linear light (the colours are display colours, `sky_display`).
-fn cabin_outside(dir: vec3<f32>, level: f32) -> vec3<f32> {
+fn cabin_outside(dir: vec3<f32>, level: f32, cells: ProbeCells) -> vec3<f32> {
     // The cube holds linear light (`graded`).
     if (frame.reflection.x != 0.0) {
-        return max(surrounding(dir, level, frame.car_body[3].xyz), vec3<f32>(0.0));
+        return max(surrounding_in(dir, level, cells), vec3<f32>(0.0));
     }
     return pow(max(open_sky(dir, level / 7.0), vec3<f32>(0.0)), vec3<f32>(2.2));
 }

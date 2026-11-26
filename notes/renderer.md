@@ -2167,6 +2167,12 @@ no Immediate): 54.7 fps, 1% low 42.2, 0.1% low 35.5, p50 18.26 ms, GPU 17.93 ms 
 It needs a display output on (2026-11-08, sway, monitor asleep: `swaymsg -t get_outputs` empty): fullscreen then
 draws 1920x1080 to no screen, a `--size` window comes out 1x1 (bench.py fails the run), and a window whose output went
 away mid-run stopped drawing and never quit (bench.py ends a run after 420 s plus `--seconds`).
+Exact shader trims (2026-11-26, bench at 1920x1080 with no output on; GPU ms 450 / BTB 1926655 / AC 1333662 / DiRT
+1060170, 38 reference shots byte-identical):
+- `probe_cells` once per point (`surroundings`, the cabin's window light), `surrounding_in` samples: `cell_probe`'s
+  loops are not merged by the compiler; 8.00 / 6.44 / 7.24 / 13.25 to 7.47 / 6.20 / 7.01 / 12.22.
+- `car_cells()`, the car's probe cells memoised per pixel for `reflected` and the cabin: to 7.31 / 6.11 / 6.92 / 12.08.
+- `cabin_light` skipped under the day's light unless the scrape takes it: scene pass -0.04 ms on each.
 Pacing and latency (2026-11-02): the perf log's `frame change` row (each frame's time against the one before) and
 `RBR_LATENCY=frames`' "any input -> on screen" (from every ms of the drive from the go until the first frame that read
 input after it was on screen, by Wayland's presentation feedback). SwayFX 0.6 (sway 1.12), same machine and scene, one
