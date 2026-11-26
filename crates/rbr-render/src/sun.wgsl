@@ -73,11 +73,22 @@ fn vs_sun_placed(v: VertexIn, i: InstanceIn) -> Out {
     return out;
 }
 
+// Levels finer than the footprint the cut-out alpha is read at (`fs_sun`).
+const SUN_ALPHA_FINER: f32 = 3.0;
+
 @fragment
 fn fs_sun(v: Out) {
-    let cut = mode.alpha_test != 0u || mode.cutout != 0u;
-    if (cut && textureSampleLevel(texture0, texture_sampler, v.uv0, 0.0).a <= mode.alpha_ref) {
-        discard;
+    // The cut-out texel at `SUN_ALPHA_FINER` levels finer than the map texel's footprint, one level (no anisotropy).
+    // Level 0 read the upscaled foliage (up to 4096 a card) scattered over each map texel: DiRT Ouninpohja's second
+    // cascade 3.1 ms, 0.95 so (2026-11-26). At the footprint (0.7 ms) the coarser alpha filled the crowns' gaps,
+    // flattening their sun-dapple; the implicit level's anisotropic filtering cost more on RSF and BTB.
+    if (mode.alpha_test != 0u || mode.cutout != 0u) {
+        let texels = v.uv0 * vec2<f32>(textureDimensions(texture0));
+        let across = max(length(dpdx(texels)), length(dpdy(texels)));
+        let level = max(log2(max(across, 1e-6)) + mode.mip_bias - SUN_ALPHA_FINER, 0.0);
+        if (textureSampleLevel(texture0, texture_sampler, v.uv0, level).a <= mode.alpha_ref) {
+            discard;
+        }
     }
 }
 

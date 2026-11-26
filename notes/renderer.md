@@ -1647,8 +1647,12 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   backdrop's meshes are culled by each map's sides. 1080p Ultra, 580 chase: sun maps 7.36 to 3.92 ms, surroundings
   cube 0.82 to 0.52, CPU drawn-only 15.4 to 12.2; Gabiria fly-by 3.83 to 1.64. What is left is cut-out fill at 4096
   (cascades 0.5/1.5/1.7 ms; 0.2/0.3/0.3 without cut-outs). Frames differ only in the paint's cube (no grass) and the
-  asphalt. Tried and dropped: alpha from a coarser mip in `fs_sun` (-0.5 ms on cascade 3, changes coverage), cut-out
-  casters sorted front to back (no gain). The mirrors draw only the rain's near layer (the far one's drops are under a
+  asphalt. Tried and dropped: cut-out casters sorted front to back (no gain).
+- Cut-out alpha by footprint (2026-11-26, user's call, `fs_sun`, `SUN_ALPHA_FINER`): read 3 levels finer than the map
+  texel's footprint, one level, not mip 0 (the upscaled foliage scattered over each texel). 1080p cockpit, all sun
+  maps: DiRT Ouninpohja 3.84 to 1.64 ms (cascade 2 3.09 to 0.95), AC Nordschleife 1.35 to 0.95, RSF 450 and BTB same.
+  At the footprint itself (1.19 ms) the crowns lost their sun-dapple; the implicit level's anisotropy cost more on RSF.
+  Shots: forest ones RMSE up to 0.012, the rest under 0.006. The mirrors draw only the rain's near layer (the far one's drops are under a
   pixel there): 4K Luceram rain cockpit mirrors 0.91 to 0.72 ms, the mirror images unchanged to the eye (2026-10-30).
 - Third cascade coarse on Ultra (2026-11-18, `sun::COARSE`, `Quality::drawn`): drawn at 2048 into its own depth
   texture and copied up 2x2 into its 4096 layer (`fs_coarse`), its texel (and so the readers' normal offset) and
