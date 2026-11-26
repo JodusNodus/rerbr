@@ -675,16 +675,19 @@ impl Form {
 
             let tip = "Standard: the rain film and beads drawn as patterns. Simulated: the water on the windscreen \
                        simulated, drops beading, merging and running; costlier";
+            let wet_glass = g.windscreen;
             rows.row("Windscreen effects", |ui| {
-                combo(
-                    ui,
-                    "windscreen effects",
-                    None,
-                    &mut g.windscreen_effects,
-                    &WindscreenEffects::ALL,
-                    WindscreenEffects::label,
-                )
-                .on_hover_text(tip);
+                ui.add_enabled_ui(wet_glass, |ui| {
+                    combo(
+                        ui,
+                        "windscreen effects",
+                        None,
+                        &mut g.windscreen_effects,
+                        &WindscreenEffects::ALL,
+                        WindscreenEffects::label,
+                    )
+                    .on_hover_text(tip)
+                });
             });
 
             let tip = "A field of grass blades over the grassy ground within 40 m of the road, swaying in the wind, \
