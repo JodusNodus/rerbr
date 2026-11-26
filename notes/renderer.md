@@ -1128,6 +1128,16 @@ through their full-size quads, depth tested: 450 rain / 127 wet cockpits -0.88 /
 softer and the smallest fade, no flicker. User decision 2026-11-06: High only, Ultra keeps the film whole. Tried and
 dropped: the fine beads left out at 4K (-0.43 / -0.29 ms; the glass reads much drier).
 
+Standard film (2026-11-26, 450 heavy rain cockpit, 4K, RX 9060 XT, "particles, glass, rain", full-size film): 2.62 to 1.58
+ms in two steps, the picture the same. (1) The beads' squares are made once a frame (`bead_squares` compute in
+`glass.wgsl`, `Pass::set_tables`/`make_squares`): per pane and layer a table of the lattice squares the pane's cells
+reach (`lattice_squares`), each holding its bead's hash (with the stroke that last wiped its middle), that stroke's
+number and age, and its patch's share; `bead_layer` reads the 2 x 2 squares' entries and keeps the pixel's `bead_share`
+and lens. 2.62 to 1.98 ms, 4K shot byte-identical. (2) The waves' slope, the blotch and the outside's mottle (position
+only) baked once into a 16-texel-a-cell rgba16f texture (`bake_statics`, `film_statics`): 1.98 to 1.58 ms, 4K RMSE
+0.08 of 255 (largest difference 7, 3 px in a million over 2). The half-size film (`HALF_FILM_FROM`) now saves less:
+High 1.29 against Ultra 1.58 ms (before: 1.72 against 2.62), kept.
+
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
 `--wipers`, key I). Drops are lenses over the resolved frame; a wet film blurs it. Camera dirt on outside views is
 not ported.

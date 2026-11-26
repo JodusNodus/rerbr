@@ -161,6 +161,73 @@ pub struct Pass {
     /// until then it draws as Standard).
     #[allow(dead_code)]
     effects: WindscreenEffects,
+    /// The beads' squares (`glass.wgsl`'s `bead_square`): each pane's layers' [`Table`]s, the squares they list (made
+    /// once a frame by `bead_squares`, [`Pass::draw_half`]), and how many groups of [`SQUARES_GROUP`] squares the
+    /// largest table takes, over how many tables.
+    tables: wgpu::Buffer,
+    squares: wgpu::Buffer,
+    squares_capacity: usize,
+    bead_squares: wgpu::ComputePipeline,
+    compute_read: wgpu::BindGroupLayout,
+    compute_write: wgpu::BindGroupLayout,
+    table_groups: (u32, u32),
+    /// The film's noise over the glass (`bake_statics`), made in the first frame drawn.
+    statics: wgpu::TextureView,
+    bake_statics: wgpu::ComputePipeline,
+    bake_write: wgpu::BindGroupLayout,
+    baked: std::cell::Cell<bool>,
+}
+
+/// One layer of one pane's beads' squares, as `glass.wgsl`'s `Table`: the squares of the lattice that the pane's film
+/// cells reach, row by row from the lowest, at `offset` in the squares.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Pod, Zeroable)]
+#[repr(C)]
+struct Table {
+    origin: [i32; 2],
+    dims: [u32; 2],
+    offset: u32,
+    pane: u32,
+    side: u32,
+    layer: u32,
+    size: [f32; 2],
+    landed: f32,
+    pad: f32,
+}
+
+/// The panes the beads' tables hold, two layers each (a windscreen and four side windows at most).
+const PANES: usize = 8;
+const TABLES: usize = PANES * 2;
+/// The squares a compute group makes (`@workgroup_size` of `bead_squares`), and how many the buffer first holds.
+const SQUARES_GROUP: usize = 64;
+/// The film's baked noise's texels to a film cell, across and up (`glass.wgsl`'s `STATIC_TEXELS`).
+const STATIC_TEXELS: u32 = 16;
+const FIRST_SQUARES: usize = 1 << 16;
+/// The two layers' lattices (`glass.wgsl`'s `BEAD_PITCH` and `BEAD_TURN`): square size in metres, turn in radians.
+const BEAD_LATTICES: [(f32, f32); 2] = [(0.0055, 0.53), (0.012, -0.97)];
+
+fn squares_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("glass bead squares"),
+        size: (capacity * 16) as u64,
+        usage: wgpu::BufferUsages::STORAGE,
+        mapped_at_creation: false,
+    })
+}
+
+/// The squares of a layer's lattice that a pane's film cells (`size` metres a cell) reach: the lowest square's number
+/// and how many across and up. A pixel looks at the 2 x 2 squares from `floor(p - 0.5)` (`bead_layer`), the margin
+/// takes up the angles' rounding.
+fn lattice_squares(size: [f32; 2], (pitch, turn): (f32, f32)) -> ([i32; 2], [u32; 2]) {
+    let [columns, rows] = super::model::FILM_CELLS;
+    let (width, height) = (columns as f32 * size[0], rows as f32 * size[1]);
+    let (c, s) = (turn.cos(), turn.sin());
+    let corners = [(0.0, 0.0), (width, 0.0), (0.0, height), (width, height)]
+        .map(|(x, y): (f32, f32)| [(c * x + s * y) / pitch, (c * y - s * x) / pitch]);
+    let low = corners.iter().fold([f32::MAX; 2], |m, p| [m[0].min(p[0]), m[1].min(p[1])]);
+    let high = corners.iter().fold([f32::MIN; 2], |m, p| [m[0].max(p[0]), m[1].max(p[1])]);
+    let origin = low.map(|v| (v - 0.5).floor() as i32 - 1);
+    let top = high.map(|v| (v - 0.5).floor() as i32 + 2);
+    (origin, [(top[0] - origin[0] + 1) as u32, (top[1] - origin[1] + 1) as u32])
 }
 
 impl Pass {
@@ -175,6 +242,11 @@ impl Pass {
         effects: WindscreenEffects,
     ) -> Pass {
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
+        let storage = |read_only| wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("glass"),
             entries: &[
@@ -235,6 +307,17 @@ impl Pass {
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                entry(8, wgpu::ShaderStages::FRAGMENT, storage(true)),
+                entry(9, wgpu::ShaderStages::FRAGMENT, storage(true)),
+                entry(
+                    10,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                 ),
@@ -310,6 +393,86 @@ impl Pass {
         // frame through their quads at full size, depth tested.
         let half_film = pipeline("fs_film", None);
         let half_uniform = gpu_util::uniform_buffer(device, "glass frame, half size", size_of::<FrameUniform>());
+        let tables = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("glass bead tables"),
+            size: (TABLES * size_of::<Table>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let compute_read = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glass bead squares, read"),
+            entries: &[
+                entry(
+                    0,
+                    wgpu::ShaderStages::COMPUTE,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                entry(8, wgpu::ShaderStages::COMPUTE, storage(true)),
+            ],
+        });
+        let compute_write = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glass bead squares, write"),
+            entries: &[entry(0, wgpu::ShaderStages::COMPUTE, storage(false))],
+        });
+        let compute_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("glass bead squares"),
+            bind_group_layouts: &[Some(&compute_read), Some(&compute_write)],
+            immediate_size: 0,
+        });
+        let bead_squares = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("glass bead squares"),
+            layout: Some(&compute_layout),
+            module: &shader,
+            entry_point: Some("bead_squares"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let squares = squares_buffer(device, FIRST_SQUARES);
+        let [columns, rows] = super::model::FILM_CELLS.map(|n| n as u32 * STATIC_TEXELS);
+        let statics = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("glass film noise"),
+                size: wgpu::Extent3d { width: columns, height: rows, depth_or_array_layers: 2 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
+        let bake_write = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glass film noise, write"),
+            entries: &[entry(
+                1,
+                wgpu::ShaderStages::COMPUTE,
+                wgpu::BindingType::StorageTexture {
+                    access: wgpu::StorageTextureAccess::WriteOnly,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                },
+            )],
+        });
+        let bake_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("glass film noise"),
+            bind_group_layouts: &[None, Some(&bake_write)],
+            immediate_size: 0,
+        });
+        let bake_statics = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("glass film noise"),
+            layout: Some(&bake_layout),
+            module: &shader,
+            entry_point: Some("bake_statics"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
         let no_half = half_target(device, format, (1, 1));
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
@@ -338,6 +501,17 @@ impl Pass {
             halved: false,
             effects,
             format,
+            tables,
+            squares,
+            squares_capacity: FIRST_SQUARES,
+            bead_squares,
+            compute_read,
+            compute_write,
+            table_groups: (0, 0),
+            statics,
+            bake_statics,
+            bake_write,
+            baked: std::cell::Cell::new(false),
         }
     }
 
@@ -356,6 +530,7 @@ impl Pass {
             uploads.write(&self.instances, 0, bytemuck::cast_slice(drops));
         }
         self.count = drops.len() as u32;
+        self.set_tables(device, uploads, drops);
         self.runs.clear();
         for (i, drop) in drops.iter().enumerate() {
             let (pipeline, i) = (pipeline_of(drop.kind), i as u32);
@@ -363,6 +538,46 @@ impl Pass {
                 Some((last, run)) if *last == pipeline => run.end = i + 1,
                 _ => self.runs.push((pipeline, i..i + 1)),
             }
+        }
+    }
+
+    /// The beads' tables for the panes whose film cells `drops` hold (`pane_drops`: a film cell carries its pane's cell
+    /// size, landing clock and number in `normal`, and a side window's streak is negative).
+    fn set_tables(&mut self, device: &wgpu::Device, uploads: &mut Uploads, drops: &[Drop]) {
+        let mut tables = [Table::default(); TABLES];
+        let mut seen = [false; PANES];
+        let mut offset = 0;
+        for drop in drops.iter().filter(|d| d.kind == 4.0) {
+            let [width, height, landed, pane] = drop.normal;
+            let pane = pane as usize;
+            if pane >= PANES || std::mem::replace(&mut seen[pane], true) {
+                continue;
+            }
+            for (layer, lattice) in BEAD_LATTICES.into_iter().enumerate() {
+                let (origin, dims) = lattice_squares([width, height], lattice);
+                tables[pane * 2 + layer] = Table {
+                    origin,
+                    dims,
+                    offset,
+                    pane: pane as u32,
+                    side: u32::from(drop.seed < 0.0),
+                    layer: layer as u32,
+                    size: [width, height],
+                    landed,
+                    pad: 0.0,
+                };
+                offset += dims[0] * dims[1];
+            }
+        }
+        let used = tables.iter().rposition(|t| t.dims != [0; 2]).map_or(0, |last| last + 1);
+        let longest = tables.iter().map(|t| (t.dims[0] * t.dims[1]) as usize).max().unwrap_or(0);
+        self.table_groups = (longest.div_ceil(SQUARES_GROUP) as u32, used as u32);
+        if used > 0 {
+            uploads.write(&self.tables, 0, bytemuck::cast_slice(&tables));
+        }
+        if offset as usize > self.squares_capacity {
+            self.squares_capacity = (offset as usize).next_power_of_two();
+            self.squares = squares_buffer(device, self.squares_capacity);
         }
     }
 
@@ -461,8 +676,59 @@ impl Pass {
             TextureView(images),
             views.as_entire_binding(),
             TextureView(half),
+            self.tables.as_entire_binding(),
+            self.squares.as_entire_binding(),
+            TextureView(&self.statics),
         ];
         gpu_util::bind_group(device, "glass", &self.layout, &resources)
+    }
+
+    /// Makes the beads' squares (`bead_squares`) from the frame's wipers, before the film's cells read them.
+    fn make_squares(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+        let (groups, tables) = self.table_groups;
+        if groups == 0 {
+            return;
+        }
+        if !self.baked.replace(true) {
+            let write = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("glass film noise, write"),
+                layout: &self.bake_write,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.statics),
+                }],
+            });
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("glass film noise"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.bake_statics);
+            pass.set_bind_group(1, &write, &[]);
+            let [columns, rows] = super::model::FILM_CELLS.map(|n| (n as u32 * STATIC_TEXELS).div_ceil(8));
+            pass.dispatch_workgroups(columns, rows, 2);
+        }
+        fn at(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
+            wgpu::BindGroupEntry { binding, resource: buffer.as_entire_binding() }
+        }
+        let read = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glass bead squares, read"),
+            layout: &self.compute_read,
+            entries: &[at(0, &self.uniform), at(8, &self.tables)],
+        });
+        let write = gpu_util::bind_group(
+            device,
+            "glass bead squares, write",
+            &self.compute_write,
+            &[self.squares.as_entire_binding()],
+        );
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("glass bead squares"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.bead_squares);
+        pass.set_bind_group(0, &read, &[]);
+        pass.set_bind_group(1, &write, &[]);
+        pass.dispatch_workgroups(groups, tables, 1);
     }
 
     /// Draws the film's cells at half size ([`HALF_FILM_FROM`]) when the frame does, before [`Pass::draw`] lays them
@@ -474,6 +740,7 @@ impl Pass {
         scene: &wgpu::TextureView,
         mirrors: (&wgpu::TextureView, &wgpu::Buffer),
     ) {
+        self.make_squares(device, encoder);
         let Some((_, target)) = self.half.as_ref().filter(|_| self.halved && self.count > 0) else {
             return;
         };
@@ -518,3 +785,47 @@ crate::shader_check::wgsl_layout!(
     "Frame",
     FrameUniform { view_projection, screen, light, night, outside, eye, sun, sun_light, wipers.wipers, wipers.strokes, wipers.wiping, wipers.film, sun_matrix, shadow }
 );
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_glass_bead_table_keeps_the_shaders_layout,
+    SHADER,
+    "Table",
+    Table { origin, dims, offset, pane, side, layer, size, landed, pad }
+);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The numbers of `const name: vec2<f32> = vec2<f32>(x, y);` in the shader.
+    fn pair(name: &str) -> [f32; 2] {
+        let line = SHADER.lines().find(|l| l.starts_with(&format!("const {name}:"))).expect("the constant");
+        let inner = line.split("vec2<f32>(").nth(1).and_then(|rest| rest.split(')').next()).expect("its values");
+        let mut numbers = inner.split(',').map(|n| n.trim().parse::<f32>().expect("a number"));
+        [numbers.next().unwrap(), numbers.next().unwrap()]
+    }
+
+    #[test]
+    fn the_beads_lattices_are_the_shaders() {
+        let (pitch, turn) = (pair("BEAD_PITCH"), pair("BEAD_TURN"));
+        assert_eq!(BEAD_LATTICES, [(pitch[0], turn[0]), (pitch[1], turn[1])]);
+    }
+
+    #[test]
+    fn a_lattice_covers_the_pane_and_the_squares_a_pixel_looks_at() {
+        let size = [0.026, 0.021];
+        let (width, height) = (48.0 * size[0], 24.0 * size[1]);
+        for (pitch, turn) in BEAD_LATTICES {
+            let (origin, dims) = lattice_squares(size, (pitch, turn));
+            let (c, s) = (turn.cos(), turn.sin());
+            for (x, y) in [(0.0, 0.0), (width, 0.0), (0.0, height), (width, height), (width * 0.5, height * 0.5)] {
+                let p = [(c * x + s * y) / pitch, (c * y - s * x) / pitch];
+                for k in 0..4 {
+                    let square = [(p[0] - 0.5).floor() as i32 + (k & 1), (p[1] - 0.5).floor() as i32 + (k >> 1)];
+                    assert!((0..2).all(|a| square[a] >= origin[a] && square[a] < origin[a] + dims[a] as i32));
+                }
+            }
+        }
+    }
+}
