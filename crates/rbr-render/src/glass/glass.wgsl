@@ -63,6 +63,25 @@ struct MirrorViews {
 const WINDSCREEN_MIRROR: u32 = 4u;
 // The film's cells drawn at half size (`glass::gpu::HALF_FILM_FROM`), premultiplied, for `fs_film_half`.
 @group(0) @binding(7) var half_film: texture_2d<f32>;
+// The beads' squares (`bead_square`, `gpu::Pass::squares`): per pane and layer where its table lies in `squares`.
+struct Table {
+    // The lowest square's number, and the squares across and up.
+    origin: vec2<i32>,
+    dims: vec2<u32>,
+    offset: u32,
+    pane: u32,
+    // 1 on a side window (no wipers).
+    side: u32,
+    layer: u32,
+    // The pane's film cell size (metres) and landing clock, as a film cell carries them in `normal`.
+    size: vec2<f32>,
+    landed: f32,
+    pad: f32,
+}
+@group(0) @binding(8) var<storage, read> tables: array<Table>;
+@group(0) @binding(9) var<storage, read> squares: array<vec4<u32>>;
+// `bead_squares`' own bindings (group 1), the same table written (`squares` is its reader).
+@group(1) @binding(0) var<storage, read_write> made: array<vec4<u32>>;
 
 struct Instance {
     @location(0) centre: vec3<f32>,
@@ -424,34 +443,64 @@ fn turned(v: vec2<f32>, cs: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
 }
 
+// What a square of a layer's lattice holds (`bead_squares` fills the table, once a frame, for `bead_layer`): its bead's
+// hashed bytes (taken with the stroke that last wiped its middle), that stroke's number and age, and its patch's share.
+fn bead_square(t: Table, square: vec2<i32>) -> vec4<u32> {
+    let turn = select(BEAD_TURN.x, BEAD_TURN.y, t.layer == 1u);
+    let pitch = select(BEAD_PITCH.x, BEAD_PITCH.y, t.layer == 1u);
+    let cs = vec2<f32>(cos(turn), sin(turn));
+    let id = vec2<u32>(square + vec2<i32>(32768));
+    let key = (id.x * 73856093u) ^ (id.y * 19349663u) ^ (t.pane * 83492791u) ^ (t.layer * 2654435761u);
+    let life = bytes(hash1(key));
+    let generation = floor(t.landed / mix(BEAD_LIFE.x, BEAD_LIFE.y, life.x) + life.y);
+    let middle = turned((vec2<f32>(square) + 0.5) * pitch, cs);
+    var own = vec4<f32>(NEVER, -1.0, 0.0, 0.0);
+    if (t.side == 0u) {
+        own = last_wipe(frame.film.xy + middle);
+    }
+    let h = hash1(key ^ (u32(own.y + 1.0) * 0x9e3779b9u) ^ (u32(generation) * 0x85ebca6bu));
+    let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(middle / BEAD_PATCH, 52u));
+    return vec4<u32>(h, bitcast<u32>(own.y), bitcast<u32>(own.x), bitcast<u32>(patchy));
+}
+
+@compute @workgroup_size(64)
+fn bead_squares(@builtin(global_invocation_id) id: vec3<u32>) {
+    let t = tables[id.y];
+    if (id.x >= t.dims.x * t.dims.y) {
+        return;
+    }
+    let square = vec2<i32>(i32(id.x % t.dims.x), i32(id.x / t.dims.x)) + t.origin;
+    made[t.offset + id.x] = bead_square(t, square);
+}
+
 // The bead of one layer over this pixel of a film cell, premultiplied; `film` the cells' film here, `at` the pixel on
 // the pane (metres from its film's low corner), `metres` a film cell's size, `wipe` the blade's last pass here.
-fn bead_layer(in: Out, film: f32, at: vec2<f32>, metres: vec2<f32>, wipe: vec4<f32>, pitch: f32, turn: f32, sizes: vec2<f32>, fill: f32, salt: u32) -> vec4<f32> {
+fn bead_layer(in: Out, film: f32, at: vec2<f32>, metres: vec2<f32>, wipe: vec4<f32>, pitch: f32, turn: f32, sizes: vec2<f32>, fill: f32, layer: u32) -> vec4<f32> {
     let cs = vec2<f32>(cos(turn), sin(turn));
     // The pixel in the lattice's squares.
     let p = turned(at, vec2<f32>(cs.x, -cs.y)) / pitch;
     let nearest = floor(p - 0.5);
-    let pane = u32(in.normal.w);
+    let table = tables[u32(in.normal.w) * 2u + layer];
     // The bead the pixel lies deepest in: its centre (squares), radius (squares) and own number.
     var deepest = 1.0;
     var bead = vec4<f32>(0.0);
     for (var k = 0u; k < 4u; k++) {
         let square = nearest + vec2<f32>(f32(k & 1u), f32(k >> 1u));
-        let id = vec2<u32>(vec2<i32>(square) + vec2<i32>(32768));
-        let key = (id.x * 73856093u) ^ (id.y * 19349663u) ^ (pane * 83492791u) ^ (salt * 2654435761u);
-        let life = bytes(hash1(key));
-        let generation = floor(in.normal.z / mix(BEAD_LIFE.x, BEAD_LIFE.y, life.x) + life.y);
-        let h = bytes(hash1(key ^ (u32(wipe.y + 1.0) * 0x9e3779b9u) ^ (u32(generation) * 0x85ebca6bu)));
+        let at_table = vec2<i32>(square) - table.origin;
+        if (any(at_table < vec2<i32>(0)) || any(vec2<u32>(at_table) >= table.dims)) {
+            continue;
+        }
+        let entry = squares[table.offset + u32(at_table.y) * table.dims.x + u32(at_table.x)];
+        let h = bytes(entry.x);
         let radius = mix(sizes.x, sizes.y, h.y * h.y * h.y) / pitch;
         let d = (p - square - h.zw) / radius;
         // `outline` lies within the unit disc.
         if (dot(d, d) >= 1.0) {
             continue;
         }
-        let middle = turned((square + 0.5) * pitch, cs);
-        let own = wipe_on(in, middle);
-        let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(middle / BEAD_PATCH, 52u));
-        if (own.y != wipe.y || h.x >= bead_share(film, own) * fill * patchy) {
+        // The bead's own stroke is the pixel's (it is cut at a stroke's edge).
+        let own = vec4<f32>(bitcast<f32>(entry.z), bitcast<f32>(entry.y), 0.0, 0.0);
+        if (own.y != wipe.y || h.x >= bead_share(film, own) * fill * bitcast<f32>(entry.w)) {
             continue;
         }
         let vary = fract(h.z * 5.3 + h.w);
