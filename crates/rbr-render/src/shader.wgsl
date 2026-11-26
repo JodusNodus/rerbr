@@ -2479,7 +2479,10 @@ fn rough_dielectric(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, roughness: f3
     let view = normalize(frame.eye.xyz - v.world);
     let nv = max(dot(n, view), 1e-3);
     let reflectance = environment_reflectance(nv, roughness);
-    let seen = 1.0 - v.sky.z;
+    var seen = 1.0 - v.sky.z;
+    if (SUN_MASK) {
+        seen = combine_ao(seen, contact_at(pixel, v.world));
+    }
     let occlusion = specular_occlusion(seen, nv, roughness);
     let sky = pow(sky_reflected(reflect(-view, n), roughness), vec3<f32>(2.2)) * occlusion;
     // The sun's highlight.
