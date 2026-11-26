@@ -431,7 +431,8 @@ fn splashes(world: vec3<f32>, view: vec3<f32>, pixel: f32) -> f32 {
 }
 
 // The wet road over `colour`: soaked, reflecting by `puddled`, with the sun's or the lamps' glint, and the rain's
-// splashes (`splashes`) white in the road's `light` (a white face's linear luminance), `footprint` a pixel's size there.
+// splashes (`splashes`) white in the road's `light` (a white face's linear luminance), `footprint` a pixel's size
+// there.
 fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, footprint: f32) -> vec3<f32> {
     if (dot(v.normal, v.normal) < 1e-8) {
         return colour;
