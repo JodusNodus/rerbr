@@ -282,10 +282,10 @@ impl Pass {
                         min_binding_size: None,
                     },
                 ),
+                entry(7, wgpu::ShaderStages::FRAGMENT, storage(true)),
                 entry(8, wgpu::ShaderStages::FRAGMENT, storage(true)),
-                entry(9, wgpu::ShaderStages::FRAGMENT, storage(true)),
                 entry(
-                    10,
+                    9,
                     wgpu::ShaderStages::FRAGMENT,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -295,7 +295,7 @@ impl Pass {
                 ),
                 // The simulated beads and their view of the glass (`sim_draw.wgsl`).
                 entry(
-                    11,
+                    10,
                     wgpu::ShaderStages::VERTEX,
                     wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -304,7 +304,7 @@ impl Pass {
                     },
                 ),
                 entry(
-                    12,
+                    11,
                     wgpu::ShaderStages::VERTEX,
                     wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -430,7 +430,7 @@ impl Pass {
                         min_binding_size: None,
                     },
                 ),
-                entry(8, wgpu::ShaderStages::COMPUTE, storage(true)),
+                entry(7, wgpu::ShaderStages::COMPUTE, storage(true)),
             ],
         });
         let compute_write = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -742,7 +742,7 @@ impl Pass {
         let read = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("glass bead squares, read"),
             layout: &self.compute_read,
-            entries: &[at(0, &self.uniform), at(8, &self.tables)],
+            entries: &[at(0, &self.uniform), at(7, &self.tables)],
         });
         let write = gpu_util::bind_group(
             device,

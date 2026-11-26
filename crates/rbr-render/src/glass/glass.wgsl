@@ -77,13 +77,13 @@ struct Table {
     landed: f32,
     pad: f32,
 }
-@group(0) @binding(8) var<storage, read> tables: array<Table>;
-@group(0) @binding(9) var<storage, read> squares: array<vec4<u32>>;
+@group(0) @binding(7) var<storage, read> tables: array<Table>;
+@group(0) @binding(8) var<storage, read> squares: array<vec4<u32>>;
 // `bead_squares`' own bindings (group 1), the same table written (`squares` is its reader).
 @group(1) @binding(0) var<storage, read_write> made: array<vec4<u32>>;
 // What a film cell's noise is over the glass, baked once (`bake_statics`): per pane kind (windscreen, side window) the
 // waves' slope (xy), the blotch (z) and the outside's mottle (w), `STATIC_TEXELS` a cell, sampled across the cells.
-@group(0) @binding(10) var statics: texture_2d_array<f32>;
+@group(0) @binding(9) var statics: texture_2d_array<f32>;
 @group(1) @binding(1) var baked: texture_storage_2d_array<rgba16float, write>;
 const STATIC_TEXELS: f32 = 16.0;
 

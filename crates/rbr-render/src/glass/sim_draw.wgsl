@@ -22,8 +22,8 @@ struct SimView {
     corners: array<vec4<f32>, 1225>,
 }
 
-@group(0) @binding(11) var<storage, read> sim_beads: array<SimBead>;
-@group(0) @binding(12) var<uniform> sim_view: SimView;
+@group(0) @binding(10) var<storage, read> sim_beads: array<SimBead>;
+@group(0) @binding(11) var<uniform> sim_view: SimView;
 const SIM_COLUMNS: f32 = 48.0;
 const SIM_ROWS: f32 = 24.0;
 // A running bead is drawn this much longer along its run per m/s (`glass::drawn::STRETCH`).
