@@ -14,7 +14,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::{Detail, ReflectionScale};
+use rbr_render::renderer::{Detail, ReflectionScale, WindscreenEffects};
 use rbr_render::shifter::{CarBox, Engagement};
 
 use crate::catalog::{Car, TyreChoice, WEARS};
@@ -143,6 +143,8 @@ pub struct Settings {
     pub wet_roads: Option<WetRoads>,
     /// The additions' detail (`viewer --detail`).
     pub detail: Option<Detail>,
+    /// How the windscreen's water is drawn (`viewer --windscreen-effects`).
+    pub windscreen_effects: Option<WindscreenEffects>,
     /// The car's and the stage's textures upscaled (`viewer --upscale-textures`).
     pub upscale_textures: Option<bool>,
     /// The driving window's frame presentation (`viewer --present`).
@@ -491,6 +493,7 @@ impl Settings {
             render_scale: launcher.number("render_scale").filter(|v| RENDER_SCALES.contains(v)),
             wet_roads: launcher.choice("wet_roads"),
             detail: launcher.choice("detail"),
+            windscreen_effects: launcher.choice("windscreen_effects"),
             upscale_textures: launcher.on_off("upscale_textures"),
             present: launcher.parsed("present", Present::parse),
             max_fps: launcher.number("max_fps").filter(|v| FRAME_CAPS.contains(v)),
@@ -615,6 +618,7 @@ impl Settings {
             ("render_scale", text(self.render_scale)),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
+            ("windscreen_effects", choice(self.windscreen_effects)),
             ("upscale_textures", on_off_text(self.upscale_textures)),
             ("present", self.present.map(|v| v.name().to_owned())),
             ("max_fps", text(self.max_fps)),
@@ -730,6 +734,7 @@ mod tests {
             render_scale: Some(75),
             wet_roads: Some(WetRoads::Low),
             detail: Some(Detail::Ultra),
+            windscreen_effects: Some(WindscreenEffects::Simulated),
             upscale_textures: Some(true),
             present: Some(Present::Immediate),
             max_fps: Some(120),
@@ -900,8 +905,15 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nstart_time = baked\n").start_time, Some(StartTime::Baked));
         assert_eq!(clock_args(Some(5 * 60)), ["--clock", "05:00"]);
         assert!(clock_args(None).is_empty());
-        assert!(text.contains("render_scale = 75\nwet_roads = low\ndetail = ultra\n"), "{text}");
+        assert!(
+            text.contains("render_scale = 75\nwet_roads = low\ndetail = ultra\nwindscreen_effects = simulated\n"),
+            "{text}"
+        );
         assert_eq!(Settings::parse("[launcher]\ndetail = high\n").detail, Some(Detail::High));
+        assert_eq!(
+            Settings::parse("[launcher]\nwindscreen_effects = standard\n").windscreen_effects,
+            Some(WindscreenEffects::Standard)
+        );
         assert_eq!(Settings::parse("[launcher]\nwet_roads = medium\n").wet_roads, Some(WetRoads::Medium));
         assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = on\nreflection_updates = 2\nreflection_resolution = 75\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nmax_fps = 100\n").max_fps, None);
@@ -1023,6 +1035,7 @@ mod tests {
                 "render_scale = 75\n",
                 "wet_roads = low\n",
                 "detail = ultra\n",
+                "windscreen_effects = simulated\n",
                 "upscale_textures = on\n",
                 "present = immediate\n",
                 "max_fps = 120\n",
@@ -1195,6 +1208,7 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nwetness = soaked\n").wetness, None);
         assert_eq!(Settings::parse("[launcher]\ndamage = hard\n").damage, None);
         assert_eq!(Settings::parse("[launcher]\ndetail = max\n").detail, None);
+        assert_eq!(Settings::parse("[launcher]\nwindscreen_effects = wet\n").windscreen_effects, None);
         assert_eq!(Settings::parse("[launcher]\nwet_roads = on\n").wet_roads, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
         assert_eq!(Settings::parse("[launcher]\nreflection_updates = 4\n").reflection_rate, None);

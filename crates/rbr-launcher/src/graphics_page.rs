@@ -8,7 +8,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::{Detail, ReflectionScale, Reflections};
+use rbr_render::renderer::{Detail, ReflectionScale, Reflections, WindscreenEffects};
 
 use crate::kit;
 use crate::pages::{combo, Choice};
@@ -30,6 +30,8 @@ pub struct Graphics {
     pub motion_blur: bool,
     pub wet_roads: WetRoads,
     pub detail: Detail,
+    /// How the windscreen's water is drawn (`--windscreen-effects`).
+    pub windscreen_effects: WindscreenEffects,
     pub mirrors: bool,
     /// How often the dynamic reflections update (`--reflection-rate`).
     pub reflection_rate: Rate,
@@ -135,6 +137,19 @@ impl Choice for Detail {
     }
 }
 
+impl Choice for WindscreenEffects {
+    const ALL: &[Self] = &WindscreenEffects::ALL;
+    fn name(self) -> &'static str {
+        WindscreenEffects::name(self)
+    }
+    fn label(self) -> &'static str {
+        match self {
+            WindscreenEffects::Standard => "Standard",
+            WindscreenEffects::Simulated => "Simulated",
+        }
+    }
+}
+
 /// The Quality section's presets (their cost: `notes/renderer.md` "Cost on an M3 Pro").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quality {
@@ -161,6 +176,7 @@ impl Quality {
             motion_blur: false,
             wet_roads: WetRoads::High,
             detail: Detail::High,
+            windscreen_effects: WindscreenEffects::Standard,
             mirrors: true,
             reflection_rate: Rate::ALL[1],
             reflection_scale: ReflectionScale::ThreeQuarters,
@@ -656,6 +672,20 @@ impl Form {
                        wiper scratches and dried water spots, and the dash reflected in it. About 1.5 to 2 ms a frame \
                        (the reflection draws the cabin and the stage behind it once more)";
             rows.switch_row("Windscreen glass effects", None, &mut g.windscreen).on_hover_text(tip);
+
+            let tip = "Standard: the rain film and beads drawn as patterns. Simulated: the water on the windscreen \
+                       simulated, drops beading, merging and running; costlier";
+            rows.row("Windscreen effects", |ui| {
+                combo(
+                    ui,
+                    "windscreen effects",
+                    None,
+                    &mut g.windscreen_effects,
+                    &WindscreenEffects::ALL,
+                    WindscreenEffects::label,
+                )
+                .on_hover_text(tip);
+            });
 
             let tip = "A field of grass blades over the grassy ground within 40 m of the road, swaying in the wind, \
                        made on the graphics card every frame. Light: half the blades, as thick to about 40 m of the \
