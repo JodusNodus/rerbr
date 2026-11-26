@@ -47,7 +47,7 @@ mod views;
 pub use cloud_volume::survey::CloudSurvey;
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
-pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections};
+pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections, WindscreenEffects};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};
 pub(crate) use meshes::mesh_bounds;
@@ -246,7 +246,14 @@ impl Renderer {
         let pass = self.glass.get_or_insert_with(|| {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
             let may_halve = self.enhance.detail == Detail::High;
-            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map, may_halve)
+            glass::gpu::Pass::new(
+                &self.device,
+                SCENE_FORMAT,
+                DEPTH_FORMAT,
+                &sun_map,
+                may_halve,
+                self.enhance.windscreen_effects,
+            )
         });
         pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);

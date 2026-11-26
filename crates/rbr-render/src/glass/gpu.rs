@@ -8,6 +8,7 @@ use wgpu::util::DeviceExt;
 
 use crate::atmosphere::Atmosphere;
 use crate::gpu_util;
+use crate::renderer::WindscreenEffects;
 use crate::uploads::Uploads;
 
 /// One drop, flake or bug on the glass: its centre and half axes in stage space, its kind (0 water, 1 snow, 2 bug,
@@ -156,17 +157,22 @@ pub struct Pass {
     /// Whether the film may be drawn at half size ([`HALF_FILM_FROM`]), and whether this frame does.
     may_halve: bool,
     halved: bool,
+    /// How the water is drawn: [`WindscreenEffects::Simulated`] is to draw the simulated water (not implemented yet:
+    /// until then it draws as Standard).
+    #[allow(dead_code)]
+    effects: WindscreenEffects,
 }
 
 impl Pass {
     /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`; the film
-    /// is drawn at half size on tall frames if `may_halve` ([`HALF_FILM_FROM`]).
+    /// is drawn at half size on tall frames if `may_halve` ([`HALF_FILM_FROM`]); `effects` is the water's level.
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         depth: wgpu::TextureFormat,
         sun_map: &wgpu::TextureView,
         may_halve: bool,
+        effects: WindscreenEffects,
     ) -> Pass {
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -330,6 +336,7 @@ impl Pass {
             no_half,
             may_halve,
             halved: false,
+            effects,
             format,
         }
     }
