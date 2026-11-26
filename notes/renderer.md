@@ -1145,9 +1145,10 @@ substeps from the glass's steps (`sim::Queue`, time carried, spawns seeded by th
 gravity; the blades push beads to their leading edge; a runner sheds small beads), find the beater that touches,
 merge by volume (integer atomics, so order-free), apply, rain and shed spawns by hash claim. Drawn as `lens` quads
 (`vs_bead`) between the film and the drops, placed by the film's corners. Running CPU drops cut the beads on their
-path. Evidence (GC8 Luceram heavy rain cockpit, 4K, ultra, "particles, glass, rain", interleaved): Standard 2.62 / 1.50 /
-1.49 ms, Simulated 2.06 / 1.36 / 1.21 ms; two 1080p runs byte-identical; the 37 reference shots without the variable
-byte-identical to main. Open: bead size and rate tuned by eye, no film-sheet coupling to the beads, no wet trails
+path. Cost against Standard (2026-11-26, RX 9060 XT, "particles, glass, rain", which holds the compute; two runs each
+within 0.01 ms, heavy rain cockpits): Luceram GC8 1080p 0.48 / 0.45, 1440p 0.77 / 0.71, 4K 1.59 / 1.46 ms; Luceram GR
+Yaris 0.44 / 0.40, 0.69 / 0.63, 1.43 / 1.30; Sipirkakim GC8 0.52 / 0.49, 0.81 / 0.76, 1.71 / 1.58. Two 1080p runs
+byte-identical; Standard's shots unchanged by it. User 2026-11-26: its sparser beads read better than Standard's. Open: bead size and rate tuned by eye, no film-sheet coupling to the beads, no wet trails
 behind simulated runners.
 
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
