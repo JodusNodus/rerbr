@@ -431,8 +431,9 @@ fn splashes(world: vec3<f32>, view: vec3<f32>, pixel: f32) -> f32 {
 }
 
 // The wet road over `colour`: soaked, reflecting by `puddled`, with the sun's or the lamps' glint, and the rain's
-// splashes (`splashes`) white in the road's `light` (a white face's linear luminance), `pixel` a pixel's size there.
-fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, pixel: f32) -> vec3<f32> {
+// splashes (`splashes`) white in the road's `light` (a white face's linear luminance), `footprint` a pixel's size
+// there.
+fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, footprint: f32) -> vec3<f32> {
     if (dot(v.normal, v.normal) < 1e-8) {
         return colour;
     }
@@ -453,7 +454,10 @@ fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, pixel: f32) -> vec3<f32
         around = ungraded(surrounding(mirrored, mix(2.0, 0.5, film.puddle), v.world));
         // The probes hold the stage (its trees and banks already) but no car: the share of the sky the car over the
         // point hides (Lagarde's specular occlusion) takes the reflection of the open sky off under the car.
-        let seen = 1.0 - frame.ground.x * car_contact(v.world);
+        var seen = 1.0 - frame.ground.x * car_contact(v.world);
+        if (SUN_MASK) {
+            seen = combine_ao(seen, contact_at(pixel, v.world));
+        }
         around = around * specular_occlusion(seen, max(dot(film.normal, view), 1e-3), mix(2.0, 0.5, film.puddle) / 7.0);
     }
     var shine = glint(mirrored);
@@ -471,7 +475,7 @@ fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, pixel: f32) -> vec3<f32
     if (frame.wetness.x < 1.0) {
         return wetted;
     }
-    let splashed = splashes(v.world, view, pixel) * clamp(film.wet * 2.0, 0.0, 1.0) * max(film.edge, film.puddle);
+    let splashed = splashes(v.world, view, footprint) * clamp(film.wet * 2.0, 0.0, 1.0) * max(film.edge, film.puddle);
     if (splashed <= 0.0) {
         return wetted;
     }

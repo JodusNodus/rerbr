@@ -1591,6 +1591,10 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   for byte elsewhere, where the route passes 7.4 m over itself (9.44 and 9.58 km) included; even probe 0 (9 km off, 600 m
   lower) everywhere moves the chase frame 0.17%, the cockpit 1.7%. The probes reach the car only blurred and clamped
   (`surroundings`); by day its paint mirrors the per-frame cube, wet asphalt the sky.
+- POC `render/poc-gtao-specular` (not merged, 2026-11-26): the GTAO visibility also cuts the wet road's probe reflection
+  (`wet_plus`) and `rough_dielectric` (dry sheen, road polish) by `specular_occlusion(combine_ao(baked, screen))`; the
+  car's body already took it through `visible`. Visible only at the car's contact line and puddle edges: RMSE 0.2-0.95
+  /255 on 5 shots; scene +0.03 ms (2.33 to 2.36, 1080p wet Luceram), the texture is already read.
 - Specular occlusion (ours, 2026-11-25, `specular_occlusion` in `shader.wgsl`, Lagarde 2014): the car's coat and
   finishes take it from the body's occlusion (`visible`, which cut them linearly before), the wet road's probe
   reflection from `1 - car_contact` (the probes hold no car, so the road under it mirrored the open sky; the stage's
