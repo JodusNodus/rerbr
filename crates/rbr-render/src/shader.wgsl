@@ -881,6 +881,11 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // The textures' colour, then lit by the vertex light.
     var surface = first.rgb;
     var alpha = first.a;
+    // The alpha test before the light: a cut-out texel's fragment is dropped unshaded (the backdrop, the mirrors, the
+    // cubes and the cut-outs past the prepass, where no depth test drops it first). `discard` keeps the derivatives.
+    if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
+        discard;
+    }
     var second = vec4<f32>(0.0);
     if (second_draw()) {
         second = textureSampleBias(texture1, texture_sampler, v.uv1, texture_bias());
@@ -1111,9 +1116,6 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         }
     }
     colour = backlit(colour, first.rgb, v.uv0, 1.0);
-    if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
-        discard;
-    }
     // Camera-anchored draws (the clouds, `frame.fog_range.z` 1) fade out toward the horizon and take on the sky's
     // colour there, so the cloud domes have no visible rim (renderer choice). Their texture and vertex colour are
     // lit by `CLOUD_LIGHT`, dimmed at dusk as the sky is (`sky_light`; 1 without `--clock`), so that they and the water
