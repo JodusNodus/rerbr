@@ -84,7 +84,7 @@ fn cabin_light(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outs
         stage = cabin_stage_lit(v.world, n);
     }
     let sunlit = CABIN_SUN * (1.0 - shadowed) * stage * (1.0 - CLOUD_CAR_SHADE * under_cloud);
-    let cells = probe_cells(frame.car_body[3].xyz);
+    let cells = car_cells();
     var ambient = INTERIOR_AMBIENT * (CABIN_FLOOR + CABIN_SKY * sky * cabin_window(cabin_seen(v), sky, CABIN_TINT, CABIN_RANGE, cells));
     // Paint (the classes that reflect, `Kf` over 0) open to the sky is the body seen through the glass (the bonnet):
     // lit as the outside view lights it, not by the interior's ambient, which blew it out white.
@@ -230,7 +230,7 @@ fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_c
     let to_sun = -frame.sun.xyz;
     let cloud = 1.0 - CLOUD_CAR_SHADE * under_cloud;
     let shade = v.bounce_sun;
-    let cells = probe_cells(frame.car_body[3].xyz);
+    let cells = car_cells();
     let window = sky * cabin_window(cabin_seen(v), sky, IBL_TINT, CABIN_DAY_RANGE, cells) * shade.x;
     let sky_through = frame.day_sky.rgb * CABIN_SKY_THROUGH;
     let sun_through = frame.day_sun.rgb * frame.cabin_seen.w;

@@ -2345,6 +2345,19 @@ fn probe_cells(at: vec3<f32>) -> ProbeCells {
     return ProbeCells(found, blend);
 }
 
+// `probe_cells` at the car (`frame.car_body`'s origin), looked up once per invocation for the reflections and the
+// cabin's light, which take it several times a pixel.
+var<private> car_probes: ProbeCells;
+var<private> car_probes_found: bool = false;
+
+fn car_cells() -> ProbeCells {
+    if (!car_probes_found) {
+        car_probes = probe_cells(frame.car_body[3].xyz);
+        car_probes_found = true;
+    }
+    return car_probes;
+}
+
 // `surrounding` with the probes `cells` of its point (`probe_cells`).
 fn surrounding_in(dir: vec3<f32>, level: f32, cells: ProbeCells) -> vec3<f32> {
     if (frame.reflection.z == 0.0) {
@@ -3165,7 +3178,7 @@ fn reflected(dir: vec3<f32>, level: f32) -> vec3<f32> {
         return sky(dir, 1.0);
     }
     if (LIGHTING && frame.reflection.z != 0.0) {
-        return ungraded(surrounding(dir, level, frame.car_body[3].xyz));
+        return ungraded(surrounding_in(dir, level, car_cells()));
     }
     return ungraded(textureSampleLevel(reflection_cube, reflection_sampler, dir, level).rgb);
 }
