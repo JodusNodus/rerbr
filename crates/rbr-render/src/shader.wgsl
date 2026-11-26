@@ -1284,9 +1284,12 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // view's light. The rest (the glass the outside is seen through, the lamps, the cracks) is lit as in the game.
     let cabin_face = CABIN && inside && lit_class() == 1u && cabin_set(v);
     if (cabin_face) {
-        let cabin = cabin_light(v, n, shadowed, under_cloud, outside);
-        around = vec4<f32>(cabin.rgb, 1.0);
-        sunlit = cabin.a;
+        // With the day's light only the scrape takes this light (`cabin_day_lit` has its own).
+        if (!day_on() || second_draw()) {
+            let cabin = cabin_light(v, n, shadowed, under_cloud, outside);
+            around = vec4<f32>(cabin.rgb, 1.0);
+            sunlit = cabin.a;
+        }
         colour = v.color.rgb * cabin_texel(first.rgb);
     } else if (CABIN && inside && lit_class() == 1u && mode.fresnel.z != 0.0) {
         around = outside;
