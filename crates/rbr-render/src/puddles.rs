@@ -91,6 +91,18 @@ static FILM: LazyLock<[f32; 256]> = LazyLock::new(|| {
     by_id
 });
 
+/// Whether each surface id is in the exe's `MaterialManager` table. Gabiria's road has stretches on id 254, which the
+/// table lacks: they share the road's texture and mesh but took no film (a hard edge across the wet tarmac).
+static NAMED: LazyLock<[bool; 256]> = LazyLock::new(|| {
+    let mut by_id = [false; 256];
+    for key in KEYS.iter().filter(|k| k.class == Class::MaterialManager) {
+        if let Some(named) = by_id.get_mut(key.offset as usize) {
+            *named = true;
+        }
+    }
+    by_id
+});
+
 /// The farthest from the road's edge, metres, that [`Vertex::edge`] tells apart.
 const EDGE_RANGE: f32 = 8.0;
 /// A position, in centimetres: the key that joins the vertices the stage splits across meshes and chunks.
@@ -301,6 +313,7 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_text
     // triangles take each share: a stage may tag stretches of its tarmac as gravel (RSF Bois de Bie, 46000 of its 185000
     // road triangles), so a film triangle takes the share most of its texture's film triangles have.
     let mut shares = Vec::new();
+    let mut unnamed = HashSet::new();
     let mut snowy = Vec::new();
     let mut votes: HashMap<Option<TextureRef>, HashMap<u32, u32>> = HashMap::new();
     for &GroundTriangle { m, t, texture, hit, road, .. } in ground {
@@ -312,6 +325,9 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_text
         if SNOW.get(surface as usize).copied().unwrap_or(false) {
             snowy.push((m, t));
         }
+        if road && !NAMED.get(surface as usize).copied().unwrap_or(false) {
+            unnamed.insert((m, t));
+        }
         shares.push((m, t, texture, share));
     }
     let most: HashMap<_, f32> = votes
@@ -321,6 +337,12 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_text
             Some((texture, f32::from_bits(bits)))
         })
         .collect();
+    // A triangle on a surface the table lacks takes its texture's share too (before the road's edge is looked for).
+    if by_texture {
+        for share in shares.iter_mut().filter(|s| unnamed.contains(&(s.0, s.1))) {
+            share.3 = most.get(&share.2).copied().unwrap_or(share.3);
+        }
+    }
     // The film triangles' edges, each with whether a ground triangle without film shares it: the road's edge. Only the
     // film's go in the map and the others' are looked up, over the load's threads (every ground edge counted, 2.3M on
     // 580, took 0.5 s).
