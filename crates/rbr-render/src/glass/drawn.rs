@@ -274,8 +274,11 @@ impl Drawn {
                 (false, None) => None,
             };
             let cutters = self.sim_cutters();
-            renderer.set_glass_sim(self.sim.as_mut().expect("some").take(cutters, view));
+            if let Some(queue) = &mut self.sim {
+                renderer.set_glass_sim(queue.take(cutters, view));
+            }
         }
+
         // The cabin reflected in the windscreen's pane.
         let to_stage = playback.body();
         renderer.set_windscreen_mirror((interior && effects).then(|| self.car.windscreen.mirror(to_stage)));

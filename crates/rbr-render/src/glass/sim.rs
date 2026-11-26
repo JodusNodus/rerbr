@@ -39,8 +39,8 @@ const GROUP: u32 = 64;
 
 /// The rain's beads landing a second on a square metre of glass at full intensity, standing and more per m/s of speed,
 /// and the share gusts add or take.
-const RAIN_STILL: f32 = 5000.0;
-const RAIN_PER_SPEED: f32 = 120.0;
+const RAIN_STILL: f32 = 8000.0;
+const RAIN_PER_SPEED: f32 = 200.0;
 const GUSTS: f32 = 0.35;
 
 /// The grid of the glass's chart the simulation and its mask lie in: cells of [`PITCH`] from `lo`.

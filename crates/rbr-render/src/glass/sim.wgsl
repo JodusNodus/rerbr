@@ -80,12 +80,12 @@ struct Cutter {
 
 // The beads. The largest a bead grows (what it gathers beyond runs off), the smallest that stays, and how near two
 // beads' edges must be to run together (of the sum of their radii).
-const RMAX: f32 = 0.0065;
+const RMAX: f32 = 0.0055;
 const RMIN: f32 = 0.0002;
-const TOUCH: f32 = 0.92;
+const TOUCH: f32 = 0.78;
 
 // What lands: the radius range (metres, the cube of a uniform number across it), and what skids on.
-const RAIN_RADIUS: vec2<f32> = vec2<f32>(0.00035, 0.0018);
+const RAIN_RADIUS: vec2<f32> = vec2<f32>(0.0004, 0.0022);
 const SKID: f32 = 0.002;
 const SKID_MOST: f32 = 0.2;
 

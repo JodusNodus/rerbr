@@ -1128,6 +1128,19 @@ through their full-size quads, depth tested: 450 rain / 127 wet cockpits -0.88 /
 softer and the smallest fade, no flicker. User decision 2026-11-06: High only, Ultra keeps the film whole. Tried and
 dropped: the fine beads left out at 4K (-0.43 / -0.29 ms; the glass reads much drier).
 
+Simulated windscreen water (ours, 2026-11-26, `glass/sim.rs`, `sim.wgsl`, `sim_draw.wgsl`; for now `RBR_GLASS_SIM=1`, read in
+`gpu::simulated_windscreen`): the windscreen's fine water is a GPU simulation instead of the film's procedural beads (the
+sheet, the blade's ridge, the CPU drops, side windows stay as they are). 65536 bead slots (centre, radius, velocity) in
+the glass's chart; a grid of 1.5 mm cells (largest bead per cell, `atomicMax`) finds touching beads. Fixed 1/120 s
+substeps from the glass's steps (`sim::Queue`, time carried, spawns seeded by the substep number; the 8 s warm-up is
+~960 substeps in the first frame), 7 compute passes each: integrate (the model's pin, grip patches, airflow and felt
+gravity; the blades push beads to their leading edge; a runner sheds small beads), find the beater that touches,
+merge by volume (integer atomics, so order-free), apply, rain and shed spawns by hash claim. Drawn as `lens` quads
+(`vs_bead`) between the film and the drops, placed by the film's corners. Running CPU drops cut the beads on their
+path. Evidence (GC8 Luceram heavy rain cockpit, 4K, ultra, "particles, glass, rain", interleaved): Standard 2.62 / 1.50 /
+1.49 ms, Simulated 2.06 / 1.36 / 1.21 ms; two 1080p runs byte-identical; the 37 reference shots without the variable
+byte-identical to main. Open: bead size and rate tuned by eye, no film-sheet coupling to the beads, no wet trails
+behind simulated runners.
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
 `--wipers`, key I). Drops are lenses over the resolved frame; a wet film blurs it. Camera dirt on outside views is
 not ported.
