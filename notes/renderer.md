@@ -1603,6 +1603,19 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   0.1-0.7, cockpits unchanged. Tried and dropped: GGX energy compensation (`1 + F0 (1/(A+B) - 1)`, Karis's fit) on the
   coat and rims: the car has no rough metal (rims `RIM_METAL` at roughness 0.3, coat 0.07), gains 1.002-1.11, RMSE
   under 0.12.
+- Tried and dropped (proofs of concept, 2026-11-26, branches deleted):
+  - Froxel volume for the fog, shafts and beams (compute passes into a 3D grid, read by a quarter-size pass): the same
+    look as the march (RMSE 0.1-0.7% day fog, 2.6-2.8% heavy night fog, at tree edges), 0.12-0.16 ms at 80x45x64 and
+    0.35-0.53 ms at 160x90x64 against 0.20-0.25 ms for the march at 1080p. It only pays off as one medium (fog as
+    `scene*T + S`, dust splatted in), which needs hooks in `fogged` and every lit pass.
+  - LTC area lights for the lamps on the wet road (Heitz's table, BSD-2; lamp sizes had no data): street-lamp streaks
+    softer and longer, but the headlights turned the wet road white even at 0.3 gain; +0.3 to 0.4 ms (scene 5.2 to
+    5.5 ms, wet Sardian night).
+  - Glints on snow (hash grid of 2 cm crystals, world-fixed): the reference snow shots are overcast, so none show; clear
+    sky gives sparse sparkles within 10-15 m (the far ground has no snow tag), +0.06 ms; night beam glints invisible.
+  - Clock-following SH light: the term is about 1-1.5/255. Ray-traced wet-road reflections: parked, instanced meshes
+    and the car are not in the structures (earlier `archive/ray-tracing`: RT sky and bounce change the frame 0.4-1.6/255
+    against the bake).
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
   stays out, its own map shadows it). A plant taller than grass is a crown (`trees`: the retail trees are three wings
