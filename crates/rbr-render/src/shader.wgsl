@@ -2284,12 +2284,13 @@ fn surroundings(n: vec3<f32>, at: vec3<f32>) -> vec4<f32> {
         let half = n + vec3<f32>(0.0, 1.0, 0.0);
         look = select(vec3<f32>(0.0, 1.0, 0.0), normalize(half), dot(half, half) > 1e-4);
     }
-    let around = ungraded(surrounding(look, 5.0, at));
+    let cells = probe_cells(at);
+    let around = ungraded(surrounding_in(look, 5.0, cells));
     // With the physically based sky, the open sky as blurred as the cube's level (`sky_reflected`).
     let open = open_sky(look, 1.0);
     let ambient = mix(vec3<f32>(dot(around, luma) / max(dot(open, luma), 1e-3)), around / max(open, vec3<f32>(1e-3)), AMBIENT_TINT);
     let to_sun = -frame.sun.xyz;
-    let toward = ungraded(surrounding(to_sun, 3.0, at));
+    let toward = ungraded(surrounding_in(to_sun, 3.0, cells));
     let seen = dot(toward, luma) / max(dot(open_sky(to_sun, 0.6), luma), 1e-3);
     return vec4<f32>(clamp(ambient, vec3<f32>(0.3), vec3<f32>(1.2)), mix(SUN_LEAST, 1.0, smoothstep(SUN_SEEN.x, SUN_SEEN.y, seen)));
 }
@@ -2316,20 +2317,45 @@ fn cell_probe(cell: i32, height: f32) -> i32 {
 // the probe of `at`'s level (`cell_probe`; the probes' first level is the cube's second); else the surroundings cube.
 // Shared cell centres keep the blend continuous even where the driveline folds back or meets its start.
 fn surrounding(dir: vec3<f32>, level: f32, at: vec3<f32>) -> vec3<f32> {
+    return surrounding_in(dir, level, probe_cells(at));
+}
+
+// The four probes `surrounding` blends at a point and their weights, looked up once for its calls at one point (the
+// lookups are loops, which the shader compiler does not merge). Unused before the probes are baked.
+struct ProbeCells {
+    probes: vec4<i32>,
+    blend: vec2<f32>,
+}
+
+fn probe_cells(at: vec3<f32>) -> ProbeCells {
     if (frame.reflection.z == 0.0) {
-        return textureSampleLevel(surroundings_cube, reflection_sampler, dir, level + CUBE_SHIFT).rgb;
+        return ProbeCells(vec4<i32>(0), vec2<f32>(0.0));
     }
     let size = vec2<i32>(probes.counts.xy);
     let grid_at = clamp((at.xz - probes.grid.xy) / probes.grid.z - 0.5, vec2<f32>(0.0), vec2<f32>(size - 1));
     let low = vec2<i32>(floor(grid_at));
     let high = min(low + 1, size - 1);
     let blend = fract(grid_at);
+    let found = vec4<i32>(
+        cell_probe(low.y * size.x + low.x, at.y),
+        cell_probe(low.y * size.x + high.x, at.y),
+        cell_probe(high.y * size.x + low.x, at.y),
+        cell_probe(high.y * size.x + high.x, at.y),
+    );
+    return ProbeCells(found, blend);
+}
+
+// `surrounding` with the probes `cells` of its point (`probe_cells`).
+fn surrounding_in(dir: vec3<f32>, level: f32, cells: ProbeCells) -> vec3<f32> {
+    if (frame.reflection.z == 0.0) {
+        return textureSampleLevel(surroundings_cube, reflection_sampler, dir, level + CUBE_SHIFT).rgb;
+    }
     let lod = max(level + CUBE_SHIFT - 1.0, 0.0);
-    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(low.y * size.x + low.x, at.y), lod).rgb;
-    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(low.y * size.x + high.x, at.y), lod).rgb;
-    let c = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(high.y * size.x + low.x, at.y), lod).rgb;
-    let d = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(high.y * size.x + high.x, at.y), lod).rgb;
-    return mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
+    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, cells.probes.x, lod).rgb;
+    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, cells.probes.y, lod).rgb;
+    let c = textureSampleLevel(probe_cubes, reflection_sampler, dir, cells.probes.z, lod).rgb;
+    let d = textureSampleLevel(probe_cubes, reflection_sampler, dir, cells.probes.w, lod).rgb;
+    return mix(mix(a, b, cells.blend.x), mix(c, d, cells.blend.x), cells.blend.y);
 }
 
 // The open sky along `dir`: `sky_reflected` by `roughness` under the physically based sky, else `sky`. A branch, not a
