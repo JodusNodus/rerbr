@@ -27,7 +27,8 @@ struct Frame {
     // Their last strokes, newest first: the angle fraction each went from and to, the seconds since it began and
     // since it ended (0 while under way); none where x == y.
     strokes: array<vec4<f32>, 4>,
-    // x the newest stroke's number, y how fast the film builds per second, z the most it holds.
+    // x the newest stroke's number, y how fast the film builds per second, z the most it holds, w 1 when the windscreen's
+    // beads are simulated (`glass/sim.rs`).
     wiping: vec4<f32>,
     // The windscreen's film cells: the first's low corner and a cell's size, chart metres.
     film: vec4<f32>,
@@ -113,6 +114,10 @@ fn to_screen(clip: vec4<f32>) -> vec2<f32> {
 
 @vertex
 fn vs_main(@builtin(vertex_index) corner: u32, instance: Instance) -> Out {
+    return place_instance(corner, instance);
+}
+
+fn place_instance(corner: u32, instance: Instance) -> Out {
     let x = f32(corner & 1u) * 2.0 - 1.0;
     let y = f32((corner >> 1u) & 1u) * 2.0 - 1.0;
     var world = instance.centre + instance.axis_u * x + instance.axis_v * y;
@@ -616,7 +621,11 @@ fn film_cell(in: Out) -> vec4<f32> {
         sum += textureSampleLevel(scene, scene_sampler, clamp(at + offset, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
     }
     let colour = sum * 0.25;
-    let bead = beads(in, cells, t, wipe);
+    // Simulated: the windscreen's beads are the simulation's (`sim_draw.wgsl`); the side windows keep these.
+    var bead = vec4<f32>(0.0);
+    if (frame.wiping.w == 0.0 || in.seed < 0.0) {
+        bead = beads(in, cells, t, wipe);
+    }
     let layer = wet_layer(in, film);
     var under = vec4<f32>(bead.rgb + colour * cover * (1.0 - bead.a), bead.a + cover * (1.0 - bead.a));
     let ridge = blade_water(in, t, film);
