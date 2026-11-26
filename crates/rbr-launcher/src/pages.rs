@@ -676,7 +676,6 @@ mod tests {
         round_trips(DamageLevel::Safe);
         round_trips(Skill::Rookie);
         round_trips(Detail::High);
-        round_trips(rbr_render::renderer::WindscreenEffects::Simulated);
         round_trips(crate::physics::PhysicsProfile::Ngp);
     }
 

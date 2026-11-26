@@ -47,7 +47,7 @@ mod views;
 pub use cloud_volume::survey::CloudSurvey;
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
-pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections, WindscreenEffects};
+pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};
 pub(crate) use meshes::mesh_bounds;
@@ -241,25 +241,14 @@ impl Renderer {
         self.enhance
     }
 
-    /// The glass pass, made on the first call.
-    fn glass_pass(&mut self) -> &mut glass::gpu::Pass {
-        self.glass.get_or_insert_with(|| {
-            let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
-            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map, self.enhance.windscreen_effects)
-        })
-    }
-
     /// The windscreen's drops of the next frames (the pass is made on the first call).
     pub fn set_glass(&mut self, drops: &[glass::gpu::Drop], wipers: glass::gpu::Wipers) {
-        self.glass_pass();
-        let pass = self.glass.as_mut().expect("made above");
+        let pass = self.glass.get_or_insert_with(|| {
+            let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
+            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map)
+        });
         pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);
-    }
-
-    /// Whether the windscreen's water is simulated (the pass is made if it is not yet).
-    pub fn glass_simulated(&mut self) -> bool {
-        self.glass_pass().simulated()
     }
 
     /// The simulated water's work for the next frames, after [`Renderer::set_glass`].

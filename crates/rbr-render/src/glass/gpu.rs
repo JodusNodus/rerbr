@@ -11,7 +11,6 @@ use wgpu::util::DeviceExt;
 use super::sim;
 use crate::atmosphere::Atmosphere;
 use crate::gpu_util;
-use crate::renderer::WindscreenEffects;
 use crate::uploads::Uploads;
 
 /// One drop, flake or bug on the glass: its centre and half axes in stage space, its kind (0 water, 1 snow, 2 bug,
@@ -125,11 +124,9 @@ fn pipeline_of(kind: f32) -> usize {
 /// has none.
 pub struct Pass {
     pipelines: [wgpu::RenderPipeline; 3],
-    /// The simulated beads' pipeline (`vs_bead`, `fs_bead`), the simulation (ours: only with the Simulated windscreen
-    /// effects) and what the pass binds for the beads without one.
+    /// The simulated beads' pipeline (`vs_bead`, `fs_bead`) and the simulation (ours).
     beads: wgpu::RenderPipeline,
-    sim: Option<RefCell<sim::Gpu>>,
-    sim_off: (wgpu::Buffer, wgpu::Buffer),
+    sim: RefCell<sim::Gpu>,
     /// The drops' runs, in order, and the pipeline of each.
     runs: Vec<(usize, std::ops::Range<u32>)>,
     layout: wgpu::BindGroupLayout,
@@ -213,14 +210,12 @@ fn lattice_squares(size: [f32; 2], (pitch, turn): (f32, f32)) -> ([i32; 2], [u32
 }
 
 impl Pass {
-    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`, for the
-    /// water's level `effects`.
+    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`.
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         depth: wgpu::TextureFormat,
         sun_map: &wgpu::TextureView,
-        effects: WindscreenEffects,
     ) -> Pass {
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
         let storage = |read_only| wgpu::BindingType::Buffer {
@@ -411,7 +406,7 @@ impl Pass {
             multiview_mask: None,
             cache: None,
         });
-        let sim = (effects == WindscreenEffects::Simulated).then(|| RefCell::new(sim::Gpu::new(device)));
+        let sim = RefCell::new(sim::Gpu::new(device));
         let tables = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass bead tables"),
             size: (TABLES * size_of::<Table>()) as u64,
@@ -502,7 +497,6 @@ impl Pass {
             pipelines,
             beads,
             sim,
-            sim_off: sim::placeholders(device),
             runs: Vec::new(),
             layout,
             sampler,
@@ -594,12 +588,7 @@ impl Pass {
         }
     }
 
-    /// Whether the windscreen's water is simulated ([`WindscreenEffects::Simulated`]).
-    pub fn simulated(&self) -> bool {
-        self.sim.is_some()
-    }
-
-    /// The simulation's work for the frame ([`sim::Queue::take`]), with the wipers set before; none without it.
+    /// The simulation's work for the frame ([`sim::Queue::take`]), with the wipers set before.
     pub(crate) fn set_sim(
         &mut self,
         device: &wgpu::Device,
@@ -607,14 +596,12 @@ impl Pass {
         uploads: &mut Uploads,
         frame: sim::Frame,
     ) {
-        if let Some(sim) = &self.sim {
-            sim.borrow_mut().set(device, queue, uploads, frame, self.wipers.wipers);
-        }
+        self.sim.borrow_mut().set(device, queue, uploads, frame, self.wipers.wipers);
     }
 
     /// Whether the simulated beads are drawn this frame.
     fn beads_drawn(&self) -> bool {
-        self.sim.as_ref().is_some_and(|sim| sim.borrow().drawable())
+        self.sim.borrow().drawable()
     }
 
     /// The windscreen's wipers: the pane's swept areas seen from inside (kind 6), and where and when the blades last
@@ -694,7 +681,7 @@ impl Pass {
         (images, views): (&wgpu::TextureView, &wgpu::Buffer),
     ) -> wgpu::BindGroup {
         use wgpu::BindingResource::{Sampler, TextureView};
-        let (beads, view) = self.sim.as_ref().map_or_else(|| self.sim_off.clone(), |sim| sim.borrow().resources());
+        let (beads, view) = self.sim.borrow().resources();
         let resources = [
             uniform.as_entire_binding(),
             TextureView(scene),
@@ -763,9 +750,7 @@ impl Pass {
     /// The frame's work before [`Pass::draw`]: the beads' squares, and the simulation's steps with it.
     pub fn compute(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
         self.make_squares(device, encoder);
-        if let Some(sim) = &self.sim {
-            sim.borrow_mut().encode(encoder);
-        }
+        self.sim.borrow_mut().encode(encoder);
     }
 
     /// Draws the simulated beads, one instance a slot.

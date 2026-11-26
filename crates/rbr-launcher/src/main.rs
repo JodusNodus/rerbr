@@ -49,7 +49,7 @@
 //! memory and saves on request), or a saved `GhostCars/<name>_<map:02>.ghc` of the stage's map. The old
 //! `GhostCars/Best_<map:02>.ghc` is no longer written and lists as a saved ghost.
 //! The Graphics & sound page's Quality section sets the renderer's additions beyond the game's look (`viewer --enhance`,
-//! `--reflections`, `--detail`, `--windscreen-effects`, `--mirrors`, `--reflection-rate`, `--reflection-res`; `graphics_page::Graphics`, one
+//! `--reflections`, `--detail`, `--mirrors`, `--reflection-rate`, `--reflection-res`; `graphics_page::Graphics`, one
 //! `launcher-settings.ini` key each), by hand
 //! or by preset; the free ones are always on. The game's own quality settings are not offered: the stage always draws
 //! at the highest (user decision).

@@ -13,7 +13,7 @@
 //!
 //! - [`model`]: the pure drop and wiper model, in the glass's chart.
 //! - [`gpu`]: the drops as lenses over the frame.
-//! - [`sim`]: the windscreen's fine water as a simulation on the GPU (the Simulated windscreen effects).
+//! - [`sim`]: the windscreen's fine water as a simulation on the GPU.
 //!
 //! The glass's chart: the windscreen's mean plane, `x` across it to the driver's right and `y` up it, with a height
 //! grid that puts a chart point back on the curved glass ([`Windscreen`]). Each wiper's pivot is the low end of its mesh

@@ -62,8 +62,6 @@ pub struct Enhance {
     pub reflections: Reflections,
     /// How much detail the additions draw at (`viewer --detail`, not in [`Enhance::NAMES`]).
     pub detail: Detail,
-    /// How the windscreen's water is drawn (`viewer --windscreen-effects`, not in [`Enhance::NAMES`]).
-    pub windscreen_effects: WindscreenEffects,
     /// What `viewer --debug-view` draws on the cabin's interior-set faces in the in-car view
     /// (`cabin.wgsl` `cabin_debug`): one term of the cabin's light instead of the shaded colour, passed through
     /// the post pass unexposed and untonemapped. Presentation only; off by default, not in [`Enhance::NAMES`].
@@ -93,33 +91,6 @@ impl Detail {
         match self {
             Detail::High => "high",
             Detail::Ultra => "ultra",
-        }
-    }
-}
-
-/// How the windscreen's water is drawn: [`WindscreenEffects::Standard`], the rain film and beads as patterns, or
-/// [`WindscreenEffects::Simulated`], the water simulated on the glass, costlier.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum WindscreenEffects {
-    #[default]
-    Standard,
-    Simulated,
-}
-
-impl WindscreenEffects {
-    /// The choices offered, in the launcher's order.
-    pub const ALL: [WindscreenEffects; 2] = [WindscreenEffects::Standard, WindscreenEffects::Simulated];
-
-    /// `standard` or `simulated`.
-    pub fn parse(text: &str) -> Option<WindscreenEffects> {
-        WindscreenEffects::ALL.into_iter().find(|w| w.name() == text)
-    }
-
-    /// Its [`WindscreenEffects::parse`] name.
-    pub fn name(self) -> &'static str {
-        match self {
-            WindscreenEffects::Standard => "standard",
-            WindscreenEffects::Simulated => "simulated",
         }
     }
 }
@@ -315,7 +286,6 @@ impl Enhance {
                         anti_aliasing: enhance.anti_aliasing,
                         reflections: enhance.reflections,
                         detail: enhance.detail,
-                        windscreen_effects: enhance.windscreen_effects,
                         debug_view: enhance.debug_view,
                     }
                 }

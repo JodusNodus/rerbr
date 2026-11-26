@@ -18,7 +18,7 @@ use rbr_render::mirrors::Rate;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
 use rbr_render::relight;
-use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections, WindscreenEffects};
+use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
 use rbr_render::triple::{Curved, Rig, Screens};
@@ -267,7 +267,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
-              --enhance LIST  --mirrors on|off  --reflection-rate 1|2|3  --reflection-res 50|75|100  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --windscreen-effects standard|simulated  --render-scale S  --textures DIR  --upscale-textures DIR  --cache DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
+              --enhance LIST  --mirrors on|off  --reflection-rate 1|2|3  --reflection-res 50|75|100  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --cache DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --sun best|golden|midday|dusk|night  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
@@ -317,7 +317,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut anti_aliasing = AntiAliasing::default();
     let mut reflections = Reflections::default();
     let mut detail = Detail::default();
-    let mut windscreen_effects = WindscreenEffects::default();
     let (mut clock, mut sun, mut relight) = (None, None, true);
     let mut fog = None;
     let mut clouds = None;
@@ -574,11 +573,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--detail" => {
                 let value = args.next().ok_or("--detail needs high or ultra")?;
                 detail = Detail::parse(&value).ok_or(format!("--detail {value}: high or ultra"))?;
-            }
-            "--windscreen-effects" => {
-                let value = args.next().ok_or("--windscreen-effects needs standard or simulated")?;
-                windscreen_effects = WindscreenEffects::parse(&value)
-                    .ok_or(format!("--windscreen-effects {value}: standard or simulated"))?;
             }
             "--enhance" => {
                 let value = args.next().ok_or("--enhance needs a list")?;
@@ -853,7 +847,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 anti_aliasing,
                 reflections,
                 detail,
-                windscreen_effects,
                 debug_view,
                 ..enhance
             }
@@ -1104,18 +1097,6 @@ mod tests {
         assert_eq!(parse("--reflections low").unwrap().enhance.reflections, Reflections::Low);
         assert_eq!(parse("--reflections off --enhance all").unwrap().enhance.reflections, Reflections::Off);
         for bad in ["--reflections on", "--reflections"] {
-            assert!(parse(bad).is_err(), "{bad}");
-        }
-    }
-
-    #[test]
-    fn windscreen_effects_defaults_to_standard() {
-        assert_eq!(parse("track-54_E").unwrap().enhance.windscreen_effects, WindscreenEffects::Standard);
-        assert_eq!(
-            parse("--windscreen-effects simulated --enhance all").unwrap().enhance.windscreen_effects,
-            WindscreenEffects::Simulated
-        );
-        for bad in ["--windscreen-effects wet", "--windscreen-effects"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
     }

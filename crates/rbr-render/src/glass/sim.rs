@@ -1,5 +1,5 @@
-//! The windscreen's simulated water (ours, "Simulated" windscreen effects; `sim.wgsl` steps it, `sim_draw.wgsl` draws
-//! it). The fine water on the glass, which the Standard level draws as a procedural film's beads, is a set of beads
+//! The windscreen's simulated water (ours; `sim.wgsl` steps it, `sim_draw.wgsl` draws
+//! it). The fine water on the glass, which the side windows still draw as the film's procedural beads, is a set of beads
 //! (centre, radius, velocity) in the glass's chart, in a fixed array of [`CAPACITY`] slots on the GPU. Rain lands as
 //! small beads at the rain's rate, beads that touch run together (volume kept), a bead past its pin runs under the felt
 //! gravity and the airflow, gathers the beads in its path and sheds a few small ones, and the blades push what lies in
@@ -487,14 +487,6 @@ impl Gpu {
         self.pending.clear();
         self.cutting = 0;
     }
-}
-
-/// What the glass pass binds for the beads while there is no simulation: one dead slot and an empty view.
-pub fn placeholders(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer) {
-    (
-        buffer(device, "glass beads, none", 32, wgpu::BufferUsages::STORAGE),
-        gpu_util::uniform_buffer(device, "glass beads' view, none", size_of::<ViewBlock>()),
-    )
 }
 
 /// `sim_draw.wgsl`'s `SimView`.

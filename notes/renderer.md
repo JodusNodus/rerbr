@@ -1136,8 +1136,9 @@ and lens. 2.62 to 1.98 ms, 4K shot byte-identical. (2) The waves' slope, the blo
 only) baked once into a 16-texel-a-cell rgba16f texture (`bake_statics`, `film_statics`): 1.98 to 1.58 ms, 4K RMSE
 0.08 of 255 (largest difference 7, 3 px in a million over 2).
 
-Simulated windscreen water (ours, 2026-11-26, `glass/sim.rs`, `sim.wgsl`, `sim_draw.wgsl`; the launcher's Windscreen
-effects, `--windscreen-effects simulated`, Standard the default): the windscreen's fine water is a GPU simulation instead of the film's procedural beads (the
+Simulated windscreen water (ours, 2026-11-26, `glass/sim.rs`, `sim.wgsl`, `sim_draw.wgsl`; the only windscreen
+water since 2026-11-26, user's decision: cheaper than the Standard film and its look preferred; the Windscreen effects
+setting that chose between them for a day is gone, the side windows keep the film's beads): the windscreen's fine water is a GPU simulation instead of the film's procedural beads (the
 sheet, the blade's ridge, the CPU drops, side windows stay as they are). 65536 bead slots (centre, radius, velocity) in
 the glass's chart; a grid of 1.5 mm cells (largest bead per cell, `atomicMax`) finds touching beads. Fixed 1/120 s
 substeps from the glass's steps (`sim::Queue`, time carried, spawns seeded by the substep number; the 8 s warm-up is

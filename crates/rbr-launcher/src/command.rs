@@ -13,7 +13,7 @@ use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::RaceOptions;
 use rbr_gameplay::weather::{self, Draws, Preset, Weather};
 use rbr_render::glass::model::Switch;
-use rbr_render::renderer::{Detail, Enhance, Reflections, WindscreenEffects};
+use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::triple::{Curved, Rig};
 use rbr_school::Lesson;
@@ -749,10 +749,6 @@ impl Form {
             .then(|| ["--detail".to_owned(), self.graphics.detail.name().to_owned()])
             .into_iter()
             .flatten();
-        let windscreen_effects = (self.graphics.windscreen_effects != WindscreenEffects::default())
-            .then(|| ["--windscreen-effects".to_owned(), self.graphics.windscreen_effects.name().to_owned()])
-            .into_iter()
-            .flatten();
         let present = ["--present".to_owned(), self.present.name().to_owned()];
         let max_fps = (self.max_fps > 0).then(|| ["--max-fps".to_owned(), self.max_fps.to_string()]);
         let mirrors = [
@@ -788,7 +784,6 @@ impl Form {
             .chain(scale)
             .chain(reflections)
             .chain(detail)
-            .chain(windscreen_effects)
             .chain(present)
             .chain(max_fps.into_iter().flatten())
             .chain(mirrors)

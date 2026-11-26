@@ -58,8 +58,8 @@ pub struct Drawn {
     mud: Mud,
     /// The last frame's drops, kept for their memory.
     instances: Vec<gpu::Drop>,
-    /// The windscreen's simulated water ([`sim`]), once the renderer has it (the Simulated windscreen effects).
-    sim: Option<sim::Queue>,
+    /// The windscreen's simulated water ([`sim`]).
+    sim: sim::Queue,
 }
 
 impl Drawn {
@@ -128,6 +128,7 @@ impl Drawn {
             wiping
         );
         let felt = Vec3::ZERO;
+        let sim = sim_queue(&car.windscreen);
         Some(Drawn {
             car,
             glass,
@@ -142,7 +143,7 @@ impl Drawn {
             felt,
             mud,
             instances: Vec::new(),
-            sim: None,
+            sim,
         })
     }
 
@@ -151,9 +152,6 @@ impl Drawn {
     /// for the `interior` views, else on the outside one (ours: the same drops, mud and wiped arcs seen from outside),
     /// or none for a car without one. A frame past the spray's known ones takes the last known frame's.
     pub fn draw(&mut self, renderer: &mut Renderer, playback: &mut Playback, interior: bool, spray: Option<&Spray>) {
-        if renderer.glass_simulated() && self.sim.is_none() {
-            self.sim = Some(self.sim_queue());
-        }
         let samples = playback.samples();
         let index = playback.index();
         let followed = matches!(self.last,
@@ -162,9 +160,7 @@ impl Drawn {
             Some((last, _)) if followed => last + 1,
             _ => {
                 self.glass.clear();
-                if let Some(queue) = &mut self.sim {
-                    queue.clear();
-                }
+                self.sim.clear();
                 self.felt = Vec3::ZERO;
                 let first = index.saturating_sub(WARM_UP);
                 let before = spray.map_or_else(Default::default, |s| s.before(first));
@@ -267,17 +263,13 @@ impl Drawn {
         }
         renderer.set_glass(&drops, wipers);
         self.instances = drops;
-        if self.sim.is_some() {
-            let view = match (interior, &self.car.exterior) {
-                (true, _) => Some(self.sim_view(playback, None)),
-                (false, Some((outside, _))) => Some(self.sim_view(playback, Some(outside))),
-                (false, None) => None,
-            };
-            let cutters = self.sim_cutters();
-            if let Some(queue) = &mut self.sim {
-                renderer.set_glass_sim(queue.take(cutters, view));
-            }
-        }
+        let view = match (interior, &self.car.exterior) {
+            (true, _) => Some(self.sim_view(playback, None)),
+            (false, Some((outside, _))) => Some(self.sim_view(playback, Some(outside))),
+            (false, None) => None,
+        };
+        let cutters = self.sim_cutters();
+        renderer.set_glass_sim(self.sim.take(cutters, view));
 
         // The cabin reflected in the windscreen's pane.
         let to_stage = playback.body();
@@ -289,27 +281,14 @@ impl Drawn {
         let windscreen = &self.car.windscreen;
         let before = self.glass.phase;
         self.glass.step(p.dt, p.conditions, p.phase, |at| windscreen.inside(at));
-        if let Some(queue) = &mut self.sim {
-            let c = p.conditions;
-            let phases = [before, self.glass.phase];
-            queue.advance(sim::Input { dt: p.dt, rain: c.rain, speed: c.speed, gravity: c.gravity, phases });
-        }
+        let c = p.conditions;
+        let phases = [before, self.glass.phase];
+        self.sim.advance(sim::Input { dt: p.dt, rain: c.rain, speed: c.speed, gravity: c.gravity, phases });
         for (side, glass) in self.car.sides.iter().zip(&mut self.sides) {
             let [across, up, _] = side.inside.axes;
             let gravity = Vec2::new(p.gravity.dot(across), p.gravity.dot(up));
             glass.step(p.dt, Conditions { gravity, ..p.conditions }, 0.0, |at| side.inside.inside(at));
         }
-    }
-
-    /// The windscreen's simulation: its grid over the chart and the mask of the glass on it.
-    fn sim_queue(&self) -> sim::Queue {
-        let w = &self.car.windscreen;
-        let grid = sim::Grid::new(w.bounds);
-        let mask = (0..grid.rows)
-            .flat_map(|row| (0..grid.columns).map(move |column| (column, row)))
-            .map(|(column, row)| if w.inside(grid.centre(column, row)) { 255 } else { 0 })
-            .collect();
-        sim::Queue::new(grid, mask, w.area)
     }
 
     /// How the simulated beads sit on the windscreen inside, or on `outside` (the outside one), at the current frame:
@@ -643,6 +622,16 @@ fn felt_acceleration(felt: Vec3, change: Vec3, dt: f32) -> Vec3 {
 fn falling(p: Option<Precipitation>) -> f32 {
     p.filter(|p| !p.snow).map_or(0.0, |p| p.intensity)
 }
+/// The windscreen `w`'s simulation: its grid over the chart and the mask of the glass on it.
+fn sim_queue(w: &Windscreen) -> sim::Queue {
+    let grid = sim::Grid::new(w.bounds);
+    let mask = (0..grid.rows)
+        .flat_map(|row| (0..grid.columns).map(move |column| (column, row)))
+        .map(|(column, row)| if w.inside(grid.centre(column, row)) { 255 } else { 0 })
+        .collect();
+    sim::Queue::new(grid, mask, w.area)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
