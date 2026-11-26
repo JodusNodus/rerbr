@@ -241,9 +241,9 @@ impl Renderer {
         self.enhance
     }
 
-    /// The windscreen's drops of the next frames (the pass is made on the first call).
-    pub fn set_glass(&mut self, drops: &[glass::gpu::Drop], wipers: glass::gpu::Wipers) {
-        let pass = self.glass.get_or_insert_with(|| {
+    /// The glass pass, made on the first call.
+    fn glass_pass(&mut self) -> &mut glass::gpu::Pass {
+        self.glass.get_or_insert_with(|| {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
             let may_halve = self.enhance.detail == Detail::High;
             glass::gpu::Pass::new(
@@ -254,9 +254,27 @@ impl Renderer {
                 may_halve,
                 self.enhance.windscreen_effects,
             )
-        });
+        })
+    }
+
+    /// The windscreen's drops of the next frames (the pass is made on the first call).
+    pub fn set_glass(&mut self, drops: &[glass::gpu::Drop], wipers: glass::gpu::Wipers) {
+        self.glass_pass();
+        let pass = self.glass.as_mut().expect("made above");
         pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);
+    }
+
+    /// Whether the windscreen's water is simulated (the pass is made if it is not yet).
+    pub fn glass_simulated(&mut self) -> bool {
+        self.glass_pass().simulated()
+    }
+
+    /// The simulated water's work for the next frames, after [`Renderer::set_glass`].
+    pub fn set_glass_sim(&mut self, frame: glass::sim::Frame) {
+        if let Some(pass) = &mut self.glass {
+            pass.set_sim(&self.device, &self.queue, &mut self.uploads, frame);
+        }
     }
 
     /// Lays the car's shadow decal ([`crate::car_shadow::decal`]) on `probe`'s ground for the car's body frame `frame`

@@ -117,6 +117,7 @@ fn every_shader_builds_for_vulkan() {
     failures.extend(check("skid marks", crate::skidmarks_pass::SHADER, &none()));
     failures.extend(check("tyre marks", crate::skidmarks_pass::TYRE_SHADER, &none()));
     failures.extend(check("glass", crate::glass::gpu::SHADER, &none()));
+    failures.extend(check("glass sim", crate::glass::sim::SHADER, &none()));
     failures.extend(check("sun", crate::sun::SHADER, &none()));
     failures.extend(check("sky occlusion", crate::sky_occlusion::SHADER, &none()));
     failures.extend(check("bounce", crate::bounce::SHADER, &none()));

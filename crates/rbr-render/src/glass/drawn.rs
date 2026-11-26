@@ -4,6 +4,7 @@ use rbr_formats::data::Data;
 
 use super::model::{self, Conditions, Glass, Kind, Switch, Wiper, Wiping};
 use super::mud::{hidden, pane_cells, through_at};
+use super::sim;
 use super::{film_corners, gpu, CarGlass, Mud, Tints, Windscreen, WINDSCREEN};
 use super::{STEP, WARM_UP};
 use crate::dirt::Spray;
@@ -19,6 +20,11 @@ const FELT_MOST: f32 = 30.0;
 const LIFT: f32 = 0.001;
 /// Ours: a sliding drop is drawn this much longer along its run per m/s.
 const STRETCH: f32 = 6.0;
+/// The model's running drops cut through the simulated beads (ours): from this radius, over the way they ran in this
+/// many seconds, as wide as this share of their radius.
+const CUT_FROM: f32 = 0.0012;
+const CUT_REACH: f32 = 1.0 / 60.0;
+const CUT_WIDTH: f32 = 0.9;
 /// Ours: mud seen from inside shows the side stuck to the glass, in its own shade: its colour times this (the outside
 /// view sees the sunlit side), and with the cabin's light the outside's light through its thin rim (`glass.wgsl`,
 /// kind 5).
@@ -52,6 +58,8 @@ pub struct Drawn {
     mud: Mud,
     /// The last frame's drops, kept for their memory.
     instances: Vec<gpu::Drop>,
+    /// The windscreen's simulated water ([`sim`]), once the renderer has it (the Simulated windscreen effects).
+    sim: Option<sim::Queue>,
 }
 
 impl Drawn {
@@ -134,6 +142,7 @@ impl Drawn {
             felt,
             mud,
             instances: Vec::new(),
+            sim: None,
         })
     }
 
@@ -142,6 +151,9 @@ impl Drawn {
     /// for the `interior` views, else on the outside one (ours: the same drops, mud and wiped arcs seen from outside),
     /// or none for a car without one. A frame past the spray's known ones takes the last known frame's.
     pub fn draw(&mut self, renderer: &mut Renderer, playback: &mut Playback, interior: bool, spray: Option<&Spray>) {
+        if renderer.glass_simulated() && self.sim.is_none() {
+            self.sim = Some(self.sim_queue());
+        }
         let samples = playback.samples();
         let index = playback.index();
         let followed = matches!(self.last,
@@ -150,6 +162,9 @@ impl Drawn {
             Some((last, _)) if followed => last + 1,
             _ => {
                 self.glass.clear();
+                if let Some(queue) = &mut self.sim {
+                    queue.clear();
+                }
                 self.felt = Vec3::ZERO;
                 let first = index.saturating_sub(WARM_UP);
                 let before = spray.map_or_else(Default::default, |s| s.before(first));
@@ -252,6 +267,18 @@ impl Drawn {
         }
         renderer.set_glass(&drops, wipers);
         self.instances = drops;
+        if self.sim.is_some() {
+            let view = match (interior, &self.car.exterior) {
+                (true, _) => Some(self.sim_view(playback, None)),
+                (false, Some((outside, _))) => Some(self.sim_view(playback, Some(outside))),
+                (false, None) => None,
+            };
+            let cutters = self.sim_cutters();
+            if let Some(queue) = &mut self.sim {
+                renderer.set_glass_sim(queue.take(cutters, view));
+            }
+        }
+
         // The cabin reflected in the windscreen's pane.
         let to_stage = playback.body();
         renderer.set_windscreen_mirror((interior && effects).then(|| self.car.windscreen.mirror(to_stage)));
@@ -260,12 +287,59 @@ impl Drawn {
     /// Steps the glass, and the side windows', by the physics steps `p`.
     fn step_glass(&mut self, p: Pending) {
         let windscreen = &self.car.windscreen;
+        let before = self.glass.phase;
         self.glass.step(p.dt, p.conditions, p.phase, |at| windscreen.inside(at));
+        if let Some(queue) = &mut self.sim {
+            let c = p.conditions;
+            let phases = [before, self.glass.phase];
+            queue.advance(sim::Input { dt: p.dt, rain: c.rain, speed: c.speed, gravity: c.gravity, phases });
+        }
         for (side, glass) in self.car.sides.iter().zip(&mut self.sides) {
             let [across, up, _] = side.inside.axes;
             let gravity = Vec2::new(p.gravity.dot(across), p.gravity.dot(up));
             glass.step(p.dt, Conditions { gravity, ..p.conditions }, 0.0, |at| side.inside.inside(at));
         }
+    }
+
+    /// The windscreen's simulation: its grid over the chart and the mask of the glass on it.
+    fn sim_queue(&self) -> sim::Queue {
+        let w = &self.car.windscreen;
+        let grid = sim::Grid::new(w.bounds);
+        let mask = (0..grid.rows)
+            .flat_map(|row| (0..grid.columns).map(move |column| (column, row)))
+            .map(|(column, row)| if w.inside(grid.centre(column, row)) { 255 } else { 0 })
+            .collect();
+        sim::Queue::new(grid, mask, w.area)
+    }
+
+    /// How the simulated beads sit on the windscreen inside, or on `outside` (the outside one), at the current frame:
+    /// the film's corners placed as the drops are.
+    fn sim_view(&self, playback: &Playback, outside: Option<&Windscreen>) -> sim::View {
+        let to_stage = playback.body();
+        let w = &self.car.windscreen;
+        let [columns, rows] = model::FILM_CELLS;
+        let corners = (0..=rows)
+            .flat_map(|row| (0..=columns).map(move |column| (column, row)))
+            .map(|(column, row)| {
+                let at = self.glass.film_corner(column, row);
+                let on = match outside {
+                    Some(o) => o.point(o.chart(w.point(at, 0.0)), LIFT),
+                    None => w.point(at, LIFT),
+                };
+                to_stage.transform_point3(on).extend(0.0).to_array()
+            })
+            .collect();
+        let [across, up, _] = outside.unwrap_or(w).axes.map(|a| to_stage.transform_vector3(a).normalize());
+        sim::View { corners, across: across.to_array(), up: up.to_array() }
+    }
+
+    /// The running drops of the model, which cut through the simulated beads on their path.
+    fn sim_cutters(&self) -> Vec<sim::Cutter> {
+        let behind = |d: &model::Drop| (d.at - d.velocity * CUT_REACH).to_array();
+        (self.glass.drops.iter())
+            .filter(|d| d.kind == Kind::Water && d.velocity != Vec2::ZERO && d.radius >= CUT_FROM)
+            .map(|d| sim::Cutter { from: behind(d), to: d.at.to_array(), radius: d.radius * CUT_WIDTH, pad: [0.0; 3] })
+            .collect()
     }
 
     /// Adds to `drops` the drops at the current frame, stage space, on the windscreen inside, or on `outside` (the
