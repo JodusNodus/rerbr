@@ -107,21 +107,9 @@ const NIGHT_GLOW: [f32; 3] = [0.16, 0.155, 0.14];
 const FIRST_CAPACITY: usize = 1024;
 
 /// The fragment entry points of [`Pass`]'s pipelines.
-const PIPELINES: [&str; 4] = ["fs_main", "fs_film", "fs_pane", "fs_film_half"];
-/// [`PIPELINES`]' film cells, and their composite from the half-size target ([`HALF_FILM_FROM`]).
+const PIPELINES: [&str; 3] = ["fs_main", "fs_film", "fs_pane"];
+/// [`PIPELINES`]' film cells.
 const FILM: usize = 1;
-const FILM_HALF: usize = 3;
-
-/// The frame height (pixels) from which the film's cells seen from inside are drawn at half size under
-/// [`Detail::High`](crate::renderer::Detail::High), for their cost at 4K (ours): their beads then look as they do at half
-/// the height. [`Detail::Ultra`](crate::renderer::Detail::Ultra) keeps them whole.
-const HALF_FILM_FROM: u32 = 1800;
-
-/// A colour target of `format` and `size` that the glass reads.
-fn half_target(device: &wgpu::Device, format: wgpu::TextureFormat, size: (u32, u32)) -> wgpu::TextureView {
-    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
-    gpu_util::target(device, "glass film, half size", size, format, usage)
-}
 
 /// Which of [`PIPELINES`] draws a drop of `kind`: the film's cells (4), the panes' cells (6), the rest.
 fn pipeline_of(kind: f32) -> usize {
@@ -136,7 +124,7 @@ fn pipeline_of(kind: f32) -> usize {
 /// other kinds don't run with their registers), the frame's drops and the resolved frame it reads when the renderer
 /// has none.
 pub struct Pass {
-    pipelines: [wgpu::RenderPipeline; 4],
+    pipelines: [wgpu::RenderPipeline; 3],
     /// The simulated beads' pipeline (`vs_bead`, `fs_bead`), the simulation (ours: only with the Simulated windscreen
     /// effects) and what the pass binds for the beads without one.
     beads: wgpu::RenderPipeline,
@@ -155,18 +143,8 @@ pub struct Pass {
     count: u32,
     scene: Option<((u32, u32), wgpu::TextureView)>,
     wipers: Wipers,
-    /// The film's cells at half size ([`HALF_FILM_FROM`]): their pipeline (no depth), the frame's uniform for that
-    /// size, the target of that size while used, and a texel standing in for it in the other draws.
-    half_film: wgpu::RenderPipeline,
-    format: wgpu::TextureFormat,
-    half_uniform: wgpu::Buffer,
-    half: Option<((u32, u32), wgpu::TextureView)>,
-    no_half: wgpu::TextureView,
-    /// Whether the film may be drawn at half size ([`HALF_FILM_FROM`]), and whether this frame does.
-    may_halve: bool,
-    halved: bool,
     /// The beads' squares (`glass.wgsl`'s `bead_square`): each pane's layers' [`Table`]s, the squares they list (made
-    /// once a frame by `bead_squares`, [`Pass::draw_half`]), and how many groups of [`SQUARES_GROUP`] squares the
+    /// once a frame by `bead_squares`, [`Pass::compute`]), and how many groups of [`SQUARES_GROUP`] squares the
     /// largest table takes, over how many tables.
     tables: wgpu::Buffer,
     squares: wgpu::Buffer,
@@ -235,14 +213,13 @@ fn lattice_squares(size: [f32; 2], (pitch, turn): (f32, f32)) -> ([i32; 2], [u32
 }
 
 impl Pass {
-    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`; the film
-    /// is drawn at half size on tall frames if `may_halve` ([`HALF_FILM_FROM`]); `effects` is the water's level.
+    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`, for the
+    /// water's level `effects`.
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         depth: wgpu::TextureFormat,
         sun_map: &wgpu::TextureView,
-        may_halve: bool,
         effects: WindscreenEffects,
     ) -> Pass {
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
@@ -303,15 +280,6 @@ impl Pass {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                    },
-                ),
-                entry(
-                    7,
-                    wgpu::ShaderStages::FRAGMENT,
-                    wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
                     },
                 ),
                 entry(8, wgpu::ShaderStages::FRAGMENT, storage(true)),
@@ -444,10 +412,6 @@ impl Pass {
             cache: None,
         });
         let sim = (effects == WindscreenEffects::Simulated).then(|| RefCell::new(sim::Gpu::new(device)));
-        // The film's cells at half size are drawn whole, under what hides them; `fs_film_half` lays them over the
-        // frame through their quads at full size, depth tested.
-        let half_film = pipeline("fs_film", None);
-        let half_uniform = gpu_util::uniform_buffer(device, "glass frame, half size", size_of::<FrameUniform>());
         let tables = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass bead tables"),
             size: (TABLES * size_of::<Table>()) as u64,
@@ -528,7 +492,6 @@ impl Pass {
             compilation_options: Default::default(),
             cache: None,
         });
-        let no_half = half_target(device, format, (1, 1));
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
             size: (FIRST_CAPACITY * std::mem::size_of::<Drop>()) as u64,
@@ -551,13 +514,6 @@ impl Pass {
             count: 0,
             scene: None,
             wipers: Wipers::default(),
-            half_film,
-            half_uniform,
-            half: None,
-            no_half,
-            may_halve,
-            halved: false,
-            format,
             tables,
             squares,
             squares_capacity: FIRST_SQUARES,
@@ -676,7 +632,6 @@ impl Pass {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare(
         &mut self,
-        device: &wgpu::Device,
         queue: &wgpu::Queue,
         view_projection: Mat4,
         (width, height): (u32, u32),
@@ -705,17 +660,6 @@ impl Pass {
             shadow: [f32::from(u8::from(cascades.is_some())), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        self.halved =
-            self.may_halve && !outside && height >= HALF_FILM_FROM && self.runs.iter().any(|(p, _)| *p == FILM);
-        if self.halved {
-            let size = (width.div_ceil(2), height.div_ceil(2));
-            if self.half.as_ref().is_none_or(|(s, _)| *s != size) {
-                self.half = Some((size, half_target(device, self.format, size)));
-            }
-            let (w, h) = (size.0 as f32, size.1 as f32);
-            let half = FrameUniform { screen: [w, h, 1.0 / w, 1.0 / h], ..uniform };
-            queue.write_buffer(&self.half_uniform, 0, bytemuck::bytes_of(&half));
-        }
     }
 
     /// The pass's own resolved frame of `size` (made or remade as needed), for a renderer without one.
@@ -741,14 +685,13 @@ impl Pass {
     }
 
     /// The pass's bind group over `uniform`, reading the resolved frame `scene`, the mirrors' images and views
-    /// `mirrors` and the film at half size `half`.
+    /// `mirrors`.
     fn group(
         &self,
         device: &wgpu::Device,
         uniform: &wgpu::Buffer,
         scene: &wgpu::TextureView,
         (images, views): (&wgpu::TextureView, &wgpu::Buffer),
-        half: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
         use wgpu::BindingResource::{Sampler, TextureView};
         let (beads, view) = self.sim.as_ref().map_or_else(|| self.sim_off.clone(), |sim| sim.borrow().resources());
@@ -760,7 +703,6 @@ impl Pass {
             Sampler(&self.sun_sampler),
             TextureView(images),
             views.as_entire_binding(),
-            TextureView(half),
             self.tables.as_entire_binding(),
             self.squares.as_entire_binding(),
             TextureView(&self.statics),
@@ -818,29 +760,11 @@ impl Pass {
         pass.dispatch_workgroups(groups, tables, 1);
     }
 
-    /// Draws the film's cells at half size ([`HALF_FILM_FROM`]) when the frame does, before [`Pass::draw`] lays them
-    /// over it; reading the resolved frame `scene` and the mirrors' `mirrors`.
-    pub fn draw_half(
-        &self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        scene: &wgpu::TextureView,
-        mirrors: (&wgpu::TextureView, &wgpu::Buffer),
-    ) {
+    /// The frame's work before [`Pass::draw`]: the beads' squares, and the simulation's steps with it.
+    pub fn compute(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
         self.make_squares(device, encoder);
         if let Some(sim) = &self.sim {
             sim.borrow_mut().encode(encoder);
-        }
-        let Some((_, target)) = self.half.as_ref().filter(|_| self.halved && self.count > 0) else {
-            return;
-        };
-        let load = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
-        let mut pass = gpu_util::colour_pass(encoder, "glass film, half size", target, load);
-        pass.set_pipeline(&self.half_film);
-        pass.set_bind_group(0, &self.group(device, &self.half_uniform, scene, mirrors, &self.no_half), &[]);
-        pass.set_vertex_buffer(0, self.instances.slice(..));
-        for (_, run) in self.runs.iter().filter(|(p, _)| *p == FILM) {
-            pass.draw(0..4, run.clone());
         }
     }
 
@@ -862,8 +786,7 @@ impl Pass {
         if self.count == 0 {
             return;
         }
-        let half = self.half.as_ref().filter(|_| self.halved);
-        let group = self.group(device, &self.uniform, scene, mirrors, half.map_or(&self.no_half, |(_, v)| v));
+        let group = self.group(device, &self.uniform, scene, mirrors);
         pass.set_bind_group(0, &group, &[]);
         pass.set_vertex_buffer(0, self.instances.slice(..));
         // The simulated beads go over the film's cells and under the drops.
@@ -874,8 +797,7 @@ impl Pass {
                 pass.set_vertex_buffer(0, self.instances.slice(..));
                 beads = false;
             }
-            let pipeline = if *pipeline == FILM && half.is_some() { FILM_HALF } else { *pipeline };
-            pass.set_pipeline(&self.pipelines[pipeline]);
+            pass.set_pipeline(&self.pipelines[*pipeline]);
             pass.draw(0..4, run.clone());
         }
         if beads {

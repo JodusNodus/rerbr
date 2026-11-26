@@ -245,15 +245,7 @@ impl Renderer {
     fn glass_pass(&mut self) -> &mut glass::gpu::Pass {
         self.glass.get_or_insert_with(|| {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
-            let may_halve = self.enhance.detail == Detail::High;
-            glass::gpu::Pass::new(
-                &self.device,
-                SCENE_FORMAT,
-                DEPTH_FORMAT,
-                &sun_map,
-                may_halve,
-                self.enhance.windscreen_effects,
-            )
+            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map, self.enhance.windscreen_effects)
         })
     }
 
