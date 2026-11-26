@@ -782,6 +782,38 @@ fn a_call_for_help_while_moving_asks_to_stop_and_the_drive_goes_on() {
     });
 }
 
+/// Ours: the fall rescue's assist (`Playback::assist`, the call for help's without its motion probe) on a moving car:
+/// the race clock takes its outside assistance, and the respawn half a second later sets the car down at rest.
+#[test]
+fn the_fall_rescue_s_assist_puts_a_moving_car_back() {
+    quick_race(|data, stage, race| {
+        let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), true).unwrap();
+        live.pace(f64::from(rbr_recording::STEP_SECONDS));
+        let mut pilot = crate::autopilot::Pilot::new("autopilot", stage, &live).unwrap();
+        let mut last = None;
+        let mut driving = 0;
+        while driving < 1000 {
+            let payload = pilot.payload(&live, last.as_deref()).unwrap();
+            last = Some(live.answer(&payload).unwrap());
+            driving += u32::from(!live.game.race_clock().counting_down());
+        }
+        let speed =
+            |last: &Option<Vec<u8>>, live: &Live| crate::autopilot::sense(last.as_ref().unwrap(), live).pose.speed();
+        let before = speed(&last, &live);
+        assert!(before > 10.0 && live.menu().help, "{before:.1} m/s");
+        live.playback.assist();
+        let idle = Input::default().to_bytes();
+        for _ in 0..100 {
+            last = Some(live.answer(&idle).unwrap());
+        }
+        assert!(!live.menu().help, "the outside assistance's window is open");
+        // Set down at rest 0.5 s in, settling on its springs since.
+        let after = speed(&last, &live);
+        assert!(after < 3.0, "{before:.1} m/s, {after:.1} m/s after the respawn");
+        assert!(!live.stopped, "the run stopped");
+    });
+}
+
 /// The value after `key` in an `.lsp` file's tree, first occurrence.
 fn lsp_value(nodes: &[rbr_formats::lsp::Node], key: &str) -> Option<f32> {
     use rbr_formats::lsp::Node;

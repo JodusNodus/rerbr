@@ -111,6 +111,10 @@ impl PhysicsStep for Runner<'_> {
     fn drive_line_point(&self, distance: f32) -> Option<[f32; 3]> {
         Some(layout::drive_line_point(self.playback, distance))
     }
+
+    fn assist(&mut self) {
+        self.playback.assist();
+    }
 }
 
 /// `--physics` (`profile`) on the car in `playback`, `car` its identity: fresh models of the profile's systems for the

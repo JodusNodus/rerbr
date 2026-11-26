@@ -113,6 +113,10 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 - A call for help while moving (the motion probe: faster than 1.5 m/s) emits `CSigCarProblem` kind 4 (MSG_CARSTOP)
   instead of the assist. Its emit (0x4e8a70) is bound for the step; no recording reaches it (live boot check:
   `a_call_for_help_while_moving_asks_to_stop_and_the_drive_goes_on`, 14.7 m/s on track-11_O).
+- Ours: a car that fell off the world (50 m below the road at its drive line distance and falling faster than
+  25 m/s, `rbr_gameplay::fall`; no jump lands that far below the road) gets the call for help's assist once per fall,
+  without the motion probe (`PhysicsStep::assist`, `Playback::assist`): the same respawn and outside-assistance
+  penalty. Checks: `a_car_falling_off_the_world_is_assisted_once`, `the_fall_rescue_s_assist_puts_a_moving_car_back`.
 - The flip spectators are five `load_car_flipN.lua`, cosmetic; `run_car_flip.lua` never runs.
 - Bird strike feeds only the sound. Crash-site scripts are unused in retail.
 

@@ -14,6 +14,7 @@ use rbr_formats::markers::StageMarkers;
 use crate::camera_go::StartCamera;
 use crate::control::{CarControl, QuantizedControl, CALL_FOR_HELP};
 use crate::driveline;
+use crate::fall::{self, FallRescue};
 use crate::filter::{self, Filter, Filtered, Grid, Raw};
 use crate::flow::{FinishZone, FlowEvents, FlowFrame, FlowMode, RaceFlow, StageEnd};
 use crate::format::{Format, FormatEnd, StepView};
@@ -122,6 +123,11 @@ pub trait PhysicsStep {
     fn drive_line_point(&self, _distance: f32) -> Option<[f32; 3]> {
         None
     }
+
+    /// Ours: the outside-assistance worker (`CCar::Assist8DF0`, 0x4e8df0) on the car with the call for help's words,
+    /// without its motion probe, between steps ([`crate::fall`]). Its `CSigOutsideAssistance` comes with the next
+    /// step's sample. A host without it does nothing.
+    fn assist(&mut self) {}
 }
 
 /// What one substep emitted or recorded.
@@ -189,6 +195,8 @@ pub struct Game {
     finish_zone: FinishZone,
     /// The jump start is armed whatever the stage's number ([`Game::with_forced_jump_start`]).
     jump_start_forced: bool,
+    /// Ours: the fall off the world's latch ([`crate::fall`]).
+    fall_rescue: FallRescue,
 }
 
 impl Game {
@@ -225,6 +233,7 @@ impl Game {
             start_camera: None,
             finish_zone: FinishZone::load(None),
             jump_start_forced: false,
+            fall_rescue: FallRescue::default(),
         }
     }
 
@@ -714,6 +723,7 @@ impl Game {
             event = Some(self.record_step(sample, control));
         });
         let event = event.expect("PhysicsStep must call its in-step callback once");
+        self.rescue_fall(physics, &event);
         if let Some(sample) = self.last_sample {
             rules.after_step(&StepView {
                 sample,
@@ -725,6 +735,20 @@ impl Game {
             });
         }
         event
+    }
+
+    /// Ours: a driven car that fell off the world gets the assist once for the fall ([`crate::fall`]).
+    fn rescue_fall(&mut self, physics: &mut impl PhysicsStep, event: &SubstepEvent) {
+        let (Some(sample), Some(distance)) = (self.last_sample, event.distance) else { return };
+        let fallen = event.stage.state() == State::Driving
+            && physics
+                .drive_line_point(distance)
+                .is_some_and(|road| fall::fallen(sample.position, sample.velocity, road));
+        let (rescue, due) = self.fall_rescue.step(fallen);
+        self.fall_rescue = rescue;
+        if due {
+            physics.assist();
+        }
     }
 }
 
@@ -847,6 +871,55 @@ mod tests {
         assert_eq!(game.stage().state(), State::Ended);
         now += f64::from(dt);
         assert_eq!(game.frame(now, FrameInput { retire: true, ..FrameInput::default() }, &mut Still).flow.end, None);
+    }
+
+    /// A car in free fall from the road at 0 m, put back on it by its first assist half a second later.
+    #[derive(Default)]
+    struct Falls {
+        step: u32,
+        assists: Vec<u32>,
+    }
+
+    impl PhysicsStep for Falls {
+        fn step(&mut self, _control: Option<CarControl>, _index: u32, inside_step: &mut dyn FnMut(StepSample)) {
+            self.step += 1;
+            let t = match self.assists.first() {
+                Some(&at) if self.step > at + 70 => 0.0,
+                _ => self.step as f32 * 0.007,
+            };
+            let (z, vz) = (-4.905 * t * t, -9.81 * t);
+            inside_step(StepSample { position: [0.0, 0.0, z], velocity: [0.0, 0.0, vz], ..StepSample::default() });
+        }
+
+        fn drive_line_point(&self, _distance: f32) -> Option<[f32; 3]> {
+            Some([0.0; 3])
+        }
+
+        fn assist(&mut self) {
+            self.assists.push(self.step);
+        }
+    }
+
+    /// Ours: the fall is rescued once, past 50 m down (3.19 s of free fall), and not again while the respawn is due.
+    #[test]
+    fn a_car_falling_off_the_world_is_assisted_once() {
+        let dt = 0.007f32;
+        let mut game = Game::new(
+            Stage::driving(54, 6),
+            Grid::from_settings(&crate::ini::Ini::parse("")),
+            &StageMarkers { keys: Vec::new() },
+            vec![0.0, 1000.0],
+            dt,
+            0.0,
+            MarkerSettings::default(),
+        );
+        let mut physics = Falls::default();
+        let mut now = 0.0f64;
+        for _ in 0..1000 {
+            now += f64::from(dt);
+            game.frame(now, FrameInput::default(), &mut physics);
+        }
+        assert_eq!(physics.assists, [457]);
     }
 
     /// A frame of several steps (NGP's 1/720 s in a 7 ms frame) fires the replay entry on its first step and the

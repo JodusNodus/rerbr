@@ -9,6 +9,7 @@ pub mod car_damage;
 pub mod control;
 pub mod crt;
 pub mod driveline;
+pub mod fall;
 pub mod ffb;
 pub mod filter;
 pub mod flow;

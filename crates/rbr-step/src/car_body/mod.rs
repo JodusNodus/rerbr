@@ -14,6 +14,7 @@ mod members;
 mod seed;
 mod step;
 
+pub(crate) use assist::assist_at;
 use assist::{lane_test, retire_a, vf158x};
 use car_calls::{body_compose, compose_body_into_world, load_binary, refresh_edge, to_world, world_compose};
 use damage_ops::{

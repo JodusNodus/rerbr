@@ -89,7 +89,7 @@ pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// `CCar::Assist8DF0` (0x4e8df0, thiscall `(a, b, c)`) on `car`, as the host's call at `sp`: the outside-assistance worker
 /// (`layout::outside_assistance`).
-pub(super) fn assist_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, words: [u32; 3]) {
+pub(crate) fn assist_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, words: [u32; 3]) {
     let esp = enter(host, mem, sp, &words);
     let frame = Frame::new(host, esp);
     let mut calls = car_calls_at(&frame, mem, esp);

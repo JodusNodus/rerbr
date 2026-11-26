@@ -62,6 +62,9 @@ impl Drop for HeldTyped<'_> {
 /// The return address of the driver's `StepForward` call.
 pub const SENTINEL: u32 = 0xfeed_0000;
 
+/// The words `UpdateSeed` gives `Assist8DF0` after a call for help: 1, 0.5 and 4.0.
+const ASSIST_WORDS: [u32; 3] = [1, 0x3F00_0000, 0x4080_0000];
+
 const FRAME: u32 = rbr_physics::car_body::transform::FRAME;
 
 /// An image's playback: every step enters `StepForward` from the image's call slot with its registers, and a step's
@@ -114,6 +117,22 @@ impl Playback {
         });
         self.runner.held_changed();
         mem.f32s(scratch)
+    }
+
+    /// Ours: `CCar::Assist8DF0` (0x4e8df0) on the car with the call for help's words (1, 0.5, 4.0), as `UpdateSeed`
+    /// calls it after its motion probe, here without the probe, between steps from the control emit's frame
+    /// (`rbr_gameplay::fall`). Its `CSigOutsideAssistance` is taken with the next step's ([`Runner::take_outside_assistance`]).
+    pub fn assist(&self) {
+        let _run = RunGuard::new(&self.runner.run_depth);
+        let _ngp = crate::ngp::Scope::new(self.runner.ngp_base);
+        rbr_physics::fpu::set_precision(Precision::Pc53);
+        let _typed = HeldTyped::lift(&self.runner);
+        let mut mem = self.runner.raw.clone();
+        let car = mem.u32(CAR_PTR);
+        let entry = Regs { ecx: mem.u32(SIGNALS) + EMIT_OFFSET, esp: self.slot, ..self.regs };
+        self.runner.with_frame(EMIT, &entry, || {
+            crate::car_body::assist_at(self.runner.host(), &mut mem, 0, car, ASSIST_WORDS);
+        });
     }
 
     /// Only the `Emit` of [`Playback::step`]: the state the next step starts from. On the typed state when it is held across steps.
