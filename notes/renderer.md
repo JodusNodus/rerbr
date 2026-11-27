@@ -398,6 +398,14 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   `hazy` sections a hazy one (0.2, 2.3 km); a fogged section keeps its `FogEnd` as the reach, in a grey hue. A
   converted stage's `[ReRbrAir]` `fog_color` and `aerosol` replace the clear day's only (they overrode every weather);
   the converter no longer writes them. The linear fog (lighting off) and our dawn and dusk mist are unchanged.
+- Overcast haze on the stage (ours, 2026-11-27): `fogged` (`shader.wgsl`) took the aerial table only with the sun out
+  (`frame.sun.w`), so under an overcast sky the stage and backdrop fell back to the section's linear fog (`FogEnd`,
+  855 m on map 41's sections) at 60 % in the horizon's colour: land past about 1 km read near white, whatever the air.
+  It now takes the table whenever the sky is on (`cs_aerial` already lit it by the deck). Overcast air is now its own
+  (`GREY_AIR`: 0.08, hue (0.64, 0.69, 0.78), 15 km; a deck does not thicken the air), rain and snow keep the old grey
+  (`WET_AIR`, 0.1, 4.6 km). `[ReRbrAir]` `reach` (km, `Atmosphere::haze_reach`) sets the reach in any weather but fog.
+  Chevron 1.26 km, ridges 3 km off, luma 185 before, 106 after, 100 at `reach=25`, video 92 (the rest is the far
+  ground's summer-ortho albedo); vanilla 41O and 21O under `--clouds heavy`: unchanged, far treeline slightly crisper.
 - Sky ambient tint (ours, prototype): `[ReRbrAir]` `sky_tint` (`Atmosphere::sky_tint`, 0 to 1, absent 1) takes the sky's light on the stage (`day_sky` from `day_light`) that far from its luminance in grey to the clear sky's own colour, for bakes that already carry their ambient (DiRT Rally's: the clear sky's blue and the eye balance read as a blue cast in their shade). It rides `SkyUniform.level.z` (as `1 - tint`, guarded so absent is bit-identical); the sky drawn and the sun's light are unchanged. Reference shots (7 of RBR and AC) RMSE 0 against the build before.
 - Converted stage grade (ours, 2026-11-24, `[ReRbrAir]` `saturation`, `exposure`, `sun_tint`; `Atmosphere::{saturation, exposure, sun_tint}`): `post::conditions` multiplies the weather's exposure and saturation by them (a heavy rain or cloud grade stays under it); `sun_tint` rides `SkyUniform.sun_tint` (`w` 1 when set) and tints `day_light`'s direct light after the balance, only while the sun is up (the moon is not tinted), the sky drawn unchanged. Absent keys leave every path as it was (the branch is skipped). `grade` (`Atmosphere::grade`, `post::Post::new`): the composite samples a 32 x 16 x 16 3D look-up table at its end, on the display-coded colour (the node coordinate is `(c * (n - 1) + 0.5) / n`, trilinear); without the key a 1-texel table is bound and the `GRADE` pipeline override is off, so the composite is built without the sample.
 - Converted stage haze (ours, 2026-11-19, superseded in part by the above): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own

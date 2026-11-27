@@ -3213,7 +3213,9 @@ fn fogged(colour: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
         // The physically based sky's haze is the section's own (`skylight::FOG_COVER`), so it replaces the linear fog.
         // Otherwise never thinner than the linear fog, whose end hides what lies past it. A clear sky's haze takes the
         // backdrop nearer than it lies (`sky_share`); fog takes it where it lies, so that it fades out behind the stage.
-        if (sky_on() && frame.sun.w != 0.0) {
+        // The aerial table holds the overcast sky's haze too (lit by the deck, `cs_aerial`): without the sun the
+        // section's linear fog (its `FogEnd`, often under 1 km) veiled the far land in the horizon's white.
+        if (sky_on()) {
             seen = sky_seen(world);
             let h = sky_haze(seen);
             f = h[0];

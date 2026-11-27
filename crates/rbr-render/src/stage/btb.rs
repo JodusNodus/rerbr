@@ -389,6 +389,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         });
         atmosphere.haze_hue = air.fog_color.map(Vec3::from);
         atmosphere.aerosol = air.aerosol;
+        atmosphere.haze_reach = air.reach.filter(|r| *r > 0.0);
         atmosphere.mist = air.mist;
         atmosphere.sky_tint = air.sky_tint;
         atmosphere.saturation = air.saturation;

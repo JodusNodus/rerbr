@@ -52,10 +52,14 @@ struct Air {
 /// as Joux Verte's mountain against a photograph (`notes/assetto.md`: a warm grey at aerosol 0.2 drew it near white,
 /// this blue-grey within 15 levels of the photograph); the other two as the `crisp` and `hazy` words' were before. A
 /// converted stage's `[ReRbrAir]` replaces the clear day's aerosol and hue ([`Atmosphere::aerosol`],
-/// [`Atmosphere::haze_hue`]).
+/// [`Atmosphere::haze_hue`]), and the reach in any weather ([`Atmosphere::haze_reach`]).
 const CLEAR_AIR: Air = Air { aerosol: 0.05, hue: Vec3::new(0.55, 0.64, 0.80), reach: 7.7, height: 0.15 };
-/// Under an overcast sky or rain.
-const GREY_AIR: Air = Air { aerosol: 0.1, hue: Vec3::new(0.68, 0.71, 0.76), reach: 4.6, height: 0.2 };
+/// Under an overcast sky: a cloud deck does not thicken the air under it (15-30 km is a common visibility), so the
+/// far land keeps its shape and darkness, blue-grey (Chevron's video, 2026-11-27: at 4.6 km the ridges 3 km off read
+/// near white once the haze reached the stage).
+const GREY_AIR: Air = Air { aerosol: 0.08, hue: Vec3::new(0.64, 0.69, 0.78), reach: 15.0, height: 0.2 };
+/// Under rain or snow.
+const WET_AIR: Air = Air { aerosol: 0.1, hue: Vec3::new(0.68, 0.71, 0.76), reach: 4.6, height: 0.2 };
 /// Under the `hazy` sections.
 const HAZY_AIR: Air = Air { aerosol: 0.2, hue: Vec3::new(0.74, 0.74, 0.74), reach: 2.3, height: 0.3 };
 /// The hue of the section's fog (its `FogEnd` its reach), whatever its colour.
@@ -207,7 +211,9 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
     let words = atmosphere.section.as_deref().unwrap_or("").to_ascii_lowercase();
     let (air, clear) = if words.contains("hazy") {
         (&HAZY_AIR, false)
-    } else if atmosphere.overcast() || atmosphere.precipitation() > 0.0 {
+    } else if atmosphere.precipitation() > 0.0 {
+        (&WET_AIR, false)
+    } else if atmosphere.overcast() {
         (&GREY_AIR, false)
     } else {
         (&CLEAR_AIR, true)
@@ -219,7 +225,7 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
     let (reach, hue) = if fogged {
         ((atmosphere.fog_end * 0.001).max(0.05), FOG_HUE)
     } else {
-        (air.reach, atmosphere.haze_hue.filter(|_| clear).unwrap_or(air.hue))
+        (atmosphere.haze_reach.unwrap_or(air.reach), atmosphere.haze_hue.filter(|_| clear).unwrap_or(air.hue))
     };
     let haze_height = air.height;
     let along = (-(1.0 - FOG_COVER).ln() / reach).clamp(0.0, 8.0);
@@ -481,6 +487,22 @@ mod tests {
         let stage = |a: &Atmosphere| Atmosphere { aerosol: Some(0.3), ..a.clone() };
         assert!(sky_uniform(&stage(&clear)).unwrap().mie[0] > clear_sky.mie[0]);
         assert_eq!(sky_uniform(&stage(&hazy)).unwrap().mie, hazy_sky.mie);
+    }
+
+    #[test]
+    fn an_overcast_sky_sees_farther_than_rain_and_a_stage_sets_its_reach() {
+        use crate::atmosphere::{Clouds, Rain};
+        let grey = Atmosphere {
+            section: Some("54E_crisp_clear".into()),
+            clouds: Some(Clouds::Heavy),
+            ..Atmosphere::default()
+        };
+        let wet = Atmosphere { rain: Some(Rain::Heavy), ..grey.clone() };
+        let [grey_haze, wet_haze] = [&grey, &wet].map(|a| sky_uniform(a).unwrap().haze);
+        assert!(wet_haze[1] > 2.0 * grey_haze[1]);
+        // A converted stage's reach in any weather: twice as far, half as thick.
+        let far = sky_uniform(&Atmosphere { haze_reach: Some(30.0), ..grey.clone() }).unwrap().haze;
+        assert!((far[1] * 2.0 - grey_haze[1]).abs() < 1e-6);
     }
 
     #[test]

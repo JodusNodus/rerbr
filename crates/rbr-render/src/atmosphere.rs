@@ -63,6 +63,9 @@ pub struct Atmosphere {
     /// stage's `[ReRbrAir]`; `skylight::CLEAR_AIR`).
     pub aerosol: Option<f32>,
     pub haze_hue: Option<Vec3>,
+    /// The distance at which the ground haze hides `skylight::FOG_COVER` of the land, km, in any weather but fog, in
+    /// place of the weather's (a converted stage's `[ReRbrAir]` `reach`: the day it was made from).
+    pub haze_reach: Option<f32>,
     /// The share of the height fog's dawn and dusk mist (`height_fog.rs`; a converted stage's `[ReRbrAir]`), else all.
     pub mist: Option<f32>,
     /// How much of the sky's colour the stage's ambient keeps, 0 its luminance in grey to 1 ours (a converted stage's
@@ -301,6 +304,7 @@ impl Default for Atmosphere {
             sun_elevation: None,
             aerosol: None,
             haze_hue: None,
+            haze_reach: None,
             mist: None,
             sky_tint: None,
             saturation: None,
@@ -395,6 +399,7 @@ impl Atmosphere {
             sun_elevation: None,
             aerosol: None,
             haze_hue: None,
+            haze_reach: None,
             mist: None,
             sky_tint: None,
             saturation: None,

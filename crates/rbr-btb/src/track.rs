@@ -281,6 +281,8 @@ pub struct TrackInfo {
 pub struct Air {
     pub fog_color: Option<[f32; 3]>,
     pub aerosol: Option<f32>,
+    /// The distance at which the ground haze hides most of the land, km (`reach`), in any weather but fog.
+    pub reach: Option<f32>,
     pub mist: Option<f32>,
     pub sky_tint: Option<f32>,
     pub north: Option<[f32; 3]>,
@@ -314,6 +316,7 @@ impl Air {
         Some(Air {
             fog_color: triple("fog_color"),
             aerosol: number("aerosol"),
+            reach: number("reach"),
             mist: number("mist"),
             sky_tint: number("sky_tint"),
             north: triple("north"),
@@ -929,9 +932,10 @@ mod tests {
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\nsun_stops=0\ngrade=g.png\n";
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nreach=20\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\nsun_stops=0\ngrade=g.png\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
+        assert_eq!(air.reach, Some(20.0));
         assert_eq!((air.sky_tint, air.north), (Some(0.4), Some([0.0, 0.0, 1.0])));
         assert_eq!((air.saturation, air.exposure, air.sun_tint), (Some(0.75), Some(1.1), Some([1.1, 1.0, 0.8])));
         assert_eq!(air.sun_stops, Some(0.0));
