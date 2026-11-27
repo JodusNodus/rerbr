@@ -9,6 +9,7 @@ use rbr_gameplay::weather::{Preset, Season};
 use rbr_render::coords;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
+use rbr_render::renderer::AntiAliasing;
 use rbr_sound::custom_codriver;
 
 use crate::catalog::{self, Catalog, TyreChoice};
@@ -150,6 +151,12 @@ impl Form {
         };
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
         let size = settings.size.unwrap_or(DEFAULT_SIZE);
+        // Below 100% the temporal anti-aliasing must stay on to upscale: a hand-edited `off` reads as TAA.
+        let render_scale = settings.render_scale.unwrap_or(100);
+        let anti_aliasing = match settings.anti_aliasing.unwrap_or(AntiAliasing::Taa) {
+            AntiAliasing::Off if render_scale == 100 => AntiAliasing::Off,
+            _ => AntiAliasing::Taa,
+        };
         let defaults = MarkerSettings::default();
         let marker = MarkerSettings {
             callout_distance: settings.callout_distance.unwrap_or(defaults.callout_distance),
@@ -251,7 +258,8 @@ impl Form {
                 reflection_rate: settings.reflection_rate.unwrap_or(DEFAULT_GRAPHICS.reflection_rate),
                 reflection_scale: settings.reflection_scale.unwrap_or(DEFAULT_GRAPHICS.reflection_scale),
             },
-            render_scale: settings.render_scale.unwrap_or(100),
+            render_scale,
+            anti_aliasing,
             upscale_textures: settings.upscale_textures.unwrap_or(false),
             upscaler: rbr_render::upscale::Upscaler::find(&home.join(rbr_render::upscale::DIR)).is_some(),
             upscaler_download: Default::default(),
@@ -377,6 +385,7 @@ impl Form {
             reflection_rate: Some(self.graphics.reflection_rate),
             reflection_scale: Some(self.graphics.reflection_scale),
             render_scale: Some(self.render_scale),
+            anti_aliasing: Some(self.anti_aliasing),
             upscale_textures: Some(self.upscale_textures),
             present: Some(self.present),
             max_fps: Some(self.max_fps),

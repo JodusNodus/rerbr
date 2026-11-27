@@ -1387,10 +1387,12 @@ Ultra (user decision 2026-11-21; the 2026-10-30 decision against a middle settin
 4K, predates drawing only the grown cards, and Light now measures cheaper, below), `windscreen` as "Windscreen" on High and
 Ultra (user decision 2026-10-30: one switch for the pane and its reflection). Removed: `lens`; `ao`, `msaa`, `taa`,
 `wind` (user decision 2026-10-19); `hdr` (2026-10-26: float targets, bloom, exposure and the tone curve are always on); `asphalt`, `gravel`, `snow`, `ground` (2026-11-02, below). Older settings and names are
-not read (user decision). The launcher's render scale is 100 % (native) by default, else 87, 75, 67 or 50 %, which the
-TAA upscales (user, 2026-11-01: at least 50 %; 75 kept, older settings hold it). The launcher offers no
-anti-aliasing choice (user, 2026-11-01): the TAA either resolves or upscales; a saved `anti_aliasing` is not read, and
-`viewer --anti-aliasing off` stays for the byte-identical checks. The default frame was
+not read (user decision). The launcher's render scale is 100 % (TAA) by default, else 100 % (no TAA), 87, 75, 67 or
+50 %: below 100 the TAA upscales (user, 2026-11-01: at least 50 %; 75 kept, older settings hold it), and at 100 the
+TAA either resolves the jittered frame or is off (user, 2026-11-27). 100 % (no TAA, `viewer --anti-aliasing off`) draws
+each pixel as it is: the sharpest stills and cheapest frames, but jagged edges, shimmering cut-outs and no motion blur.
+A saved `anti_aliasing` below 100 % reads as TAA; an explicit `viewer --anti-aliasing off` stays for the byte-identical
+checks. The default frame was
 byte-identical before and after (chase, cockpit, heavy rain, 1920x1080).
 
 | Name | What |

@@ -8,7 +8,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::{Detail, ReflectionScale, Reflections};
+use rbr_render::renderer::{AntiAliasing, Detail, ReflectionScale, Reflections};
 
 use crate::kit;
 use crate::pages::{combo, Choice};
@@ -220,11 +220,24 @@ impl Quality {
 /// high refresh rates at 1440p and above. 100, the first, is the default.
 pub const RENDER_SCALES: [u32; 5] = [100, 87, 75, 67, 50];
 
-/// A render scale's label.
-fn scale_label(percent: u32) -> String {
-    match percent {
-        100 => "100% (native)".into(),
-        percent => format!("{percent}%"),
+/// The render scale dropdown's choices: each scale with its anti-aliasing (`viewer --anti-aliasing`). Below 100
+/// the temporal anti-aliasing must stay on to upscale; at 100 it either resolves the jittered frame or draws each
+/// pixel as it is.
+pub const RENDER_CHOICES: [(u32, AntiAliasing); 6] = [
+    (100, AntiAliasing::Taa),
+    (100, AntiAliasing::Off),
+    (87, AntiAliasing::Taa),
+    (75, AntiAliasing::Taa),
+    (67, AntiAliasing::Taa),
+    (50, AntiAliasing::Taa),
+];
+
+/// A render scale choice's label.
+fn scale_label((percent, anti_aliasing): (u32, AntiAliasing)) -> String {
+    match (percent, anti_aliasing) {
+        (100, AntiAliasing::Taa) => "100% (TAA)".into(),
+        (100, AntiAliasing::Off) => "100% (no TAA)".into(),
+        (percent, _) => format!("{percent}%"),
     }
 }
 
@@ -393,10 +406,13 @@ impl Form {
 
             let tip = "Draws the 3D view at this share of the window's size, which the temporal anti-aliasing \
                        upscales to it over the frames: faster, for high refresh rates at 1440p and above; the lower, \
-                       the softer, and fast-moving edges grow rougher";
+                       the softer, and fast-moving edges grow rougher. 100% (no TAA) draws each pixel as it is: the \
+                       sharpest stills and cheapest frames, but jagged edges, shimmering cut-outs and no motion blur";
+            let mut choice = (self.render_scale, self.anti_aliasing);
             rows.row("Render scale", |ui| {
-                combo(ui, "render scale", None, &mut self.render_scale, &RENDER_SCALES, scale_label).on_hover_text(tip);
+                combo(ui, "render scale", None, &mut choice, &RENDER_CHOICES, scale_label).on_hover_text(tip);
             });
+            (self.render_scale, self.anti_aliasing) = choice;
 
             let tip = if self.upscaler {
                 "Upscales the car's and the stage's textures 4x (to at most 4096 texels a side), so the bonnet, the \
@@ -707,7 +723,14 @@ impl Form {
             let tip = "Blurs what moves across the screen over a 1/120 s shutter: the road and the verges at speed, \
                        the scenery in a fast turn of the view. The car and the cockpit stay sharp. About 0.1 ms a \
                        frame at 1080p, 0.4 ms at 4K. The presets leave it as it is";
-            rows.switch_row("Motion blur at speed", None, &mut g.motion_blur).on_hover_text(tip);
+            let taa = self.anti_aliasing == AntiAliasing::Taa;
+            rows.disabled_if(!taa, |rows| {
+                rows.switch_row("Motion blur at speed", None, &mut g.motion_blur).on_hover_text(tip)
+            })
+            .on_disabled_hover_text(
+                "Needs the temporal anti-aliasing (render scale 100% (TAA)): without its \
+                                       history there is nothing to gather",
+            );
         });
         ui.add_space(4.0);
         kit::hint(

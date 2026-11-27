@@ -501,6 +501,7 @@ impl Form {
         (
             self.graphics,
             self.render_scale,
+            self.anti_aliasing,
             self.upscale_textures,
             self.present,
             self.max_fps,

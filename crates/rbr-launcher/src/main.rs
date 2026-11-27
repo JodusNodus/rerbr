@@ -193,6 +193,7 @@ use rbr_gameplay::race_options::RaceOptions;
 use rbr_gameplay::weather::Season;
 use rbr_render::bindings::Bindings;
 use rbr_render::glass::model::Switch;
+use rbr_render::renderer::AntiAliasing;
 use rbr_sound::menu::MenuPlayer;
 use school_page::SchoolPage;
 use settings::{load, or_folder, read_settings, Gearboxes};
@@ -585,6 +586,9 @@ struct Form {
     graphics: graphics_page::Graphics,
     /// The render scale, percent ([`graphics_page::RENDER_SCALES`]).
     render_scale: u32,
+    /// The frame's anti-aliasing (`viewer --anti-aliasing`): the temporal anti-aliasing, or one sample a pixel at
+    /// 100% (`graphics_page::RENDER_CHOICES`). Below 100% always the former; the Quality presets leave it as it is.
+    anti_aliasing: AntiAliasing,
     /// The car's and the stage's textures upscaled (`viewer --upscale-textures`), when [`Form::upscaler`].
     upscale_textures: bool,
     /// Whether the upscaler is installed ([`rbr_render::upscale::Upscaler::find`]), looked for at the start and after

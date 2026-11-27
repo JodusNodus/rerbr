@@ -13,7 +13,7 @@ use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::RaceOptions;
 use rbr_gameplay::weather::{self, Draws, Preset, Weather};
 use rbr_render::glass::model::Switch;
-use rbr_render::renderer::{Detail, Enhance, Reflections};
+use rbr_render::renderer::{AntiAliasing, Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::triple::{Curved, Rig};
 use rbr_school::Lesson;
@@ -90,6 +90,15 @@ pub fn triple_args(rig: Option<Rig>, monitors: Option<&[String; 3]>, fullscreen:
 /// The viewer's `--curved` arguments for `panel`: none for a flat screen or triple (the viewer refuses both).
 pub fn curved_args(panel: Option<Curved>) -> Vec<String> {
     panel.map_or_else(Vec::new, |panel| vec!["--curved".to_owned(), panel.arg()])
+}
+
+/// The viewer's `--anti-aliasing` arguments for `anti_aliasing` at `percent`: `--anti-aliasing off` only at full
+/// size without the temporal anti-aliasing; below 100% the TAA must stay on to upscale.
+pub fn anti_aliasing_args(percent: u32, anti_aliasing: AntiAliasing) -> Vec<String> {
+    match (percent, anti_aliasing) {
+        (100, AntiAliasing::Off) => vec!["--anti-aliasing".into(), AntiAliasing::Off.name().to_owned()],
+        _ => Vec::new(),
+    }
 }
 
 /// The viewer's `--render-scale` arguments for `percent`, none at full size.
@@ -740,6 +749,7 @@ impl Form {
         // The viewer's `--live` command is the rest of the line.
         let live = args.iter().position(|a| a == "--live").unwrap_or(args.len());
         let scale = render_scale_args(self.render_scale);
+        let anti_aliasing = anti_aliasing_args(self.render_scale, self.anti_aliasing);
         let reflections = self.graphics.wet_roads.reflections();
         let reflections = (reflections != Reflections::default())
             .then(|| ["--reflections".to_owned(), reflections.name().to_owned()])
@@ -782,6 +792,7 @@ impl Form {
             .into_iter()
             .chain(replay)
             .chain(scale)
+            .chain(anti_aliasing)
             .chain(reflections)
             .chain(detail)
             .chain(present)

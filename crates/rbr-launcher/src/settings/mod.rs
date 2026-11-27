@@ -14,7 +14,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::{Detail, ReflectionScale};
+use rbr_render::renderer::{AntiAliasing, Detail, ReflectionScale};
 use rbr_render::shifter::{CarBox, Engagement};
 
 use crate::catalog::{Car, TyreChoice, WEARS};
@@ -139,6 +139,9 @@ pub struct Settings {
     pub motion_blur: Option<bool>,
     /// One of [`RENDER_SCALES`].
     pub render_scale: Option<u32>,
+    /// The frame's anti-aliasing (`viewer --anti-aliasing`): `taa` or `off`, the latter only with a 100% render
+    /// scale ([`graphics_page::RENDER_CHOICES`]). None reads as TAA.
+    pub anti_aliasing: Option<AntiAliasing>,
     /// The wet roads (`viewer --enhance wet`, `--reflections`).
     pub wet_roads: Option<WetRoads>,
     /// The additions' detail (`viewer --detail`).
@@ -489,6 +492,7 @@ impl Settings {
             windscreen: launcher.on_off("windscreen"),
             motion_blur: launcher.on_off("motion_blur"),
             render_scale: launcher.number("render_scale").filter(|v| RENDER_SCALES.contains(v)),
+            anti_aliasing: launcher.parsed("anti_aliasing", AntiAliasing::parse),
             wet_roads: launcher.choice("wet_roads"),
             detail: launcher.choice("detail"),
             upscale_textures: launcher.on_off("upscale_textures"),
@@ -613,6 +617,7 @@ impl Settings {
             ("head_gasket", text(self.head_gasket)),
             ("physics", choice(self.physics)),
             ("render_scale", text(self.render_scale)),
+            ("anti_aliasing", self.anti_aliasing.map(|v| v.name().to_owned())),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
             ("upscale_textures", on_off_text(self.upscale_textures)),
@@ -670,7 +675,7 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::{clock_args, render_scale_args};
+    use crate::command::{anti_aliasing_args, clock_args, render_scale_args};
 
     #[test]
     fn an_empty_dll_choice_preserves_automatic_discovery() {
@@ -728,6 +733,7 @@ mod tests {
             windscreen: Some(false),
             motion_blur: Some(true),
             render_scale: Some(75),
+            anti_aliasing: Some(AntiAliasing::Off),
             wet_roads: Some(WetRoads::Low),
             detail: Some(Detail::Ultra),
             upscale_textures: Some(true),
@@ -900,7 +906,7 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nstart_time = baked\n").start_time, Some(StartTime::Baked));
         assert_eq!(clock_args(Some(5 * 60)), ["--clock", "05:00"]);
         assert!(clock_args(None).is_empty());
-        assert!(text.contains("render_scale = 75\nwet_roads = low\ndetail = ultra\n"), "{text}");
+        assert!(text.contains("render_scale = 75\nanti_aliasing = off\nwet_roads = low\ndetail = ultra\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\ndetail = high\n").detail, Some(Detail::High));
         assert_eq!(Settings::parse("[launcher]\nwet_roads = medium\n").wet_roads, Some(WetRoads::Medium));
         assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = on\nreflection_updates = 2\nreflection_resolution = 75\n"), "{text}");
@@ -921,6 +927,17 @@ mod tests {
         assert_eq!(render_scale_args(87), ["--render-scale", "0.87"]);
         assert!(render_scale_args(100).is_empty());
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 0\n").render_scale, None);
+        // The frame's anti-aliasing: off only reaches the viewer at full size; below it the TAA must upscale.
+        assert_eq!(anti_aliasing_args(100, AntiAliasing::Off), ["--anti-aliasing", "off"].map(str::to_owned));
+        assert!(anti_aliasing_args(100, AntiAliasing::Taa).is_empty());
+        assert!(anti_aliasing_args(75, AntiAliasing::Off).is_empty());
+        assert_eq!(Settings::parse("[launcher]\nanti_aliasing = off\n").anti_aliasing, Some(AntiAliasing::Off));
+        assert_eq!(Settings::parse("[launcher]\nanti_aliasing = taa\n").anti_aliasing, Some(AntiAliasing::Taa));
+        assert_eq!(Settings::parse("[launcher]\nanti_aliasing = msaa\n").anti_aliasing, None);
+        assert_eq!(
+            Settings::parse("[launcher]\nanti_aliasing = off\n").to_text().matches("anti_aliasing = off").count(),
+            1
+        );
         assert!(text.contains("damage = realistic\nauto_gears = on\ngear_guard = off\n"));
         assert_eq!(
             Settings::parse("[launcher]\nweather = random\n").weather,
@@ -1021,6 +1038,7 @@ mod tests {
                 "head_gasket = 10\n",
                 "physics = experimental\n",
                 "render_scale = 75\n",
+                "anti_aliasing = off\n",
                 "wet_roads = low\n",
                 "detail = ultra\n",
                 "upscale_textures = on\n",
