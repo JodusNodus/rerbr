@@ -177,7 +177,7 @@ fn pack(cache: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<u64, Fa
                     let Some((path, size)) = plain.get(next.fetch_add(1, Ordering::Relaxed)) else { break };
                     let _ = upscale::pack(path);
                     let done = done.fetch_add(*size, Ordering::Relaxed) + size;
-                    report(&Progress { step: "Packing the texture cache", done, total });
+                    report(&Progress { step: "Packing the texture cache", done, total, ..Progress::default() });
                 }
             });
         }

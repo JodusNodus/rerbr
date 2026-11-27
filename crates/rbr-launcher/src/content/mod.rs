@@ -9,6 +9,8 @@
 //! opens "Set up from the disc…" with the disc filled in; an Assetto Corsa track is converted by `rbr_ac_tracks` into a
 //! stage for each layout in `tracks/` (`kind::ac`); classic-format stages (loose, RSF-shaped or from an NSIS
 //! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`).
+//! DiRT Rally stages are the exception: they come from the player's own install, chosen in the picker (`dirt_page`), and
+//! `dirt` runs them as an Add run.
 //! Installers (other than RBR Czech's), encrypted stages and anything unknown are refused with the reason. A new kind or container
 //! is one module and one line below.
 
@@ -20,6 +22,7 @@ use crate::pages::Page;
 use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
+pub mod dirt;
 pub mod drop;
 pub mod kind;
 pub mod source;

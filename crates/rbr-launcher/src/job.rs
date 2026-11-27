@@ -21,19 +21,22 @@ pub(crate) fn with_path<E: std::fmt::Display>(path: &Path) -> impl Fn(E) -> Stri
 /// A job's progress report: the step and the bytes written of all.
 pub type Report<'a> = &'a (dyn Fn(&Progress) + Sync);
 
-/// What the work is doing: a step and the bytes written of all.
+/// What the work is doing: a step, what it is on (a stage's name, empty when it is on no one thing) and the bytes
+/// written of all.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Progress {
     pub step: &'static str,
+    pub subject: String,
     pub done: u64,
     pub total: u64,
 }
 
 impl Progress {
     pub fn line(&self) -> String {
+        let subject = if self.subject.is_empty() { String::new() } else { format!(" {}", self.subject) };
         match self.total {
-            0 => format!("{}…", self.step),
-            total => format!("{}… {} of {} MB", self.step, self.done >> 20, total >> 20),
+            0 => format!("{}{subject}…", self.step),
+            total => format!("{}{subject}… {} of {} MB", self.step, self.done >> 20, total >> 20),
         }
     }
 }
@@ -121,7 +124,7 @@ pub struct Counter<'a> {
 impl Counter<'_> {
     pub fn add(&mut self, n: u64) -> Result<(), Fail> {
         self.done += n;
-        (self.report)(&Progress { step: self.step, done: self.done, total: self.total });
+        (self.report)(&Progress { step: self.step, done: self.done, total: self.total, ..Progress::default() });
         match self.cancel.load(Ordering::Relaxed) {
             true => Err("cancelled".into()),
             false => Ok(()),

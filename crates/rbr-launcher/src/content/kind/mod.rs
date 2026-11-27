@@ -65,7 +65,7 @@ pub struct Ctx<'a> {
 
 impl Ctx<'_> {
     pub fn step(&self, step: &'static str) {
-        (self.report)(&Progress { step, done: 0, total: 0 });
+        (self.report)(&Progress { step, ..Progress::default() });
     }
 
     pub fn cancelled(&self) -> bool {

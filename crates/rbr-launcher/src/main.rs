@@ -146,6 +146,7 @@ mod content;
 mod content_pages;
 mod controls_page;
 mod crash;
+mod dirt_page;
 mod disc_install;
 mod drive_page;
 mod get_page;
@@ -637,6 +638,8 @@ struct Form {
     folder: install::Folder,
     /// The install folder's "Set up from the disc…" panel.
     disc_setup: disc_install::DiscSetup,
+    /// The DiRT Rally picker (`dirt_page`).
+    dirt: dirt_page::Picker,
     /// "Download cars…" and the added cars (`car_packs`).
     adding: car_packs::Adding,
     /// The Settings page's downloads from gvrc.de: NGP and cars (`gvrc`).

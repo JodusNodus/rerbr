@@ -97,6 +97,11 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     form.get_more = None;
     form.downloads = Default::default();
+    // The DiRT Rally picker, from a fixed listing, over Import.
+    form.page = Page::Import;
+    form.dirt.screenshot();
+    shot_sized(&dir.join("import-dirt-picker.png"), (1280, 1000), |ctx| form.ui(ctx))?;
+    form.dirt = Default::default();
     // Import with a last import, and the same result as a toast over Cars.
     {
         use crate::content::{Goto, Outcome};

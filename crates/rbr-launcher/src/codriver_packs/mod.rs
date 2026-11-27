@@ -932,7 +932,7 @@ mod tests {
         let voices = voice_packs(&home);
         assert_eq!(voices.len(), 1);
         assert_eq!(voices[0].problem, None);
-        let progress = Progress { step: "Importing", done: 0, total: 0 };
+        let progress = Progress { step: "Importing", ..Progress::default() };
         assert_eq!(progress.line(), "Importing…");
         let _ = AtomicBool::new(false);
         fs::remove_dir_all(&dir).unwrap();

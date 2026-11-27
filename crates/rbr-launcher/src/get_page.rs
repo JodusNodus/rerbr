@@ -156,7 +156,7 @@ impl Form {
     /// The Get more modal, when open.
     pub fn get_more_modal(&mut self, ctx: &egui::Context) {
         let Some(what) = self.get_more else { return };
-        let (mut close, mut import) = (false, false);
+        let (mut close, mut import, mut dirt) = (false, false, false);
         let result = match what {
             GetMore::Cars => {
                 self.open_car_list();
@@ -192,6 +192,10 @@ impl Form {
                             self.codriver_catalog_ui(ui);
                             ui.add_space(12.0);
                         }
+                        if what == GetMore::Stages {
+                            dirt = self.dirt_card_ui(ui);
+                            ui.add_space(12.0);
+                        }
                         sites_ui(ui, sites)
                     },
                     |ui| {
@@ -207,7 +211,9 @@ impl Form {
         if import {
             self.page = Page::Import;
         }
-        if close || import || result.closed() {
+        // Get more stays open when the folder dialog is cancelled.
+        let dirt = dirt && self.open_dirt();
+        if close || import || dirt || result.closed() {
             self.get_more = None;
             self.codriver_focus.clear();
             if what == GetMore::Cars {
@@ -228,6 +234,11 @@ impl Form {
             egui::ScrollArea::vertical().id_salt("import").auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(680.0);
                 self.drop_zone_ui(ui);
+                ui.add_space(20.0);
+                kit::group_label(ui, "From a game you own", None);
+                if self.dirt_card_ui(ui) {
+                    self.open_dirt();
+                }
                 ui.add_space(20.0);
                 self.last_import_ui(ui);
                 ui.add_space(10.0);

@@ -48,6 +48,22 @@ impl Form {
         if paths.is_empty() || self.content.job.is_some() {
             return;
         }
+        let home = self.here();
+        let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
+        let weather = Some(self.data.install().join("Maps").join("TrackSettings.ini"));
+        let known = Known { numbers, weather, cars: self.skin_targets() };
+        self.start_run(move |report, cancel| super::run(&home, &known, &paths, report, cancel));
+    }
+
+    /// Starts `work` as the Add's run, unless one runs; says to close the drive first while the viewer runs. Its
+    /// outcomes are the last import ([`Form::content_done`]).
+    pub(crate) fn start_run(
+        &mut self,
+        work: impl FnOnce(job::Report<'_>, &std::sync::atomic::AtomicBool) -> Vec<Outcome> + Send + 'static,
+    ) {
+        if self.content.job.is_some() {
+            return;
+        }
         if self.child.is_some() {
             self.show_import(vec![Outcome::warning("Close the drive first")]);
             return;
@@ -55,12 +71,7 @@ impl Form {
         self.content.notice.clear();
         self.content.toast = None;
         self.content.voices_before = self.owned_voices.iter().map(|p| p.name.clone()).collect();
-        let home = self.here();
-        let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
-        let weather = Some(self.data.install().join("Maps").join("TrackSettings.ini"));
-        let known = Known { numbers, weather, cars: self.skin_targets() };
-        self.content.job =
-            Some(Job::start(move |report, cancel| Ok(super::run(&home, &known, &paths, report, cancel))));
+        self.content.job = Some(Job::start(move |report, cancel| Ok(work(report, cancel))));
     }
 
     /// Makes `outcomes` the last import; on any page but Import, a toast says them too.

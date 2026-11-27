@@ -413,6 +413,7 @@ impl Form {
                 .show(root, |ui| self.page_ui(ui))
         });
         self.get_more_modal(ctx);
+        self.dirt_modal(ctx);
         self.crash.ui(ctx);
         self.content_drop(ctx);
         // A dropdown's item picked with Enter or Space: egui closes dropdowns only on a mouse click. The focus goes

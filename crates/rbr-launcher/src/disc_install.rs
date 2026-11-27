@@ -234,7 +234,7 @@ impl<'a> Reporter<'a> {
     }
 
     fn progress(&self) -> Progress {
-        Progress { step: self.step, done: self.done.load(Ordering::Relaxed), total: self.total }
+        Progress { step: self.step, done: self.done.load(Ordering::Relaxed), total: self.total, ..Progress::default() }
     }
 
     fn stopped(&self) -> bool {

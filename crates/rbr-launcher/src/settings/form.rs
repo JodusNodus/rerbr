@@ -284,6 +284,7 @@ impl Form {
             install_folder: settings.install_folder.clone().unwrap_or_default(),
             folder,
             disc_setup: Default::default(),
+            dirt: Default::default(),
             adding,
             downloads: Default::default(),
             reload: false,

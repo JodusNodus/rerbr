@@ -215,7 +215,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   user 2026-11-18; `gvrc.rs`) or the sites' rows,
   each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
   closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
-  drop zone with Choose files… / Choose folder…, Last import with an Open link per outcome, Clear)
+  drop zone with Choose files… / Choose folder…, the DiRT Rally card (`dirt_page.rs`, also the top row of Get more stages:
+  `notes/dirt-rally.md` "Launcher import"), Last import with an Open link per outcome, Clear)
   takes every drop; on another page the result is a toast (`Add::toast`, `kit::toast`) linking to Import. Open in
   Stages shows the stage in Library › Stages (`StagesPage::show_stage`); a disc opens Settings › General's disc setup.
   Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
