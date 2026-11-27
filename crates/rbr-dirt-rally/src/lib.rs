@@ -9,7 +9,7 @@
 //! - `binxml`, `route`: the course, timing, calls and names;
 //! - `jpak`, `collision`, `surface`: the driven surface and its RBR ids;
 //! - `frame`: DiRT Rally's axes to the stage's;
-//! - `stage`, `import`, `cli`: the conversion and its interfaces.
+//! - `stage`, `import`, `listing`, `cli`: the conversion and its interfaces.
 pub mod added_car;
 pub mod binxml;
 pub mod car;
@@ -27,6 +27,7 @@ pub mod import;
 pub mod install;
 pub mod jpak;
 pub mod lighting;
+pub mod listing;
 pub mod material;
 pub mod mesh;
 pub mod needles;

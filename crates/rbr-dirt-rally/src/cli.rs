@@ -182,7 +182,7 @@ fn preview_stage(folder: &Path, viewer: Option<&Path>, maps: Option<&Path>) -> R
         None => std::env::var_os("RBR_DATA").map(|d| Path::new(&d).join("Maps")).ok_or("RBR_DATA is not set")?,
     };
     let scratch = std::env::temp_dir().join(format!("rbr-dirt-rally-preview-{}", std::process::id()));
-    let png = crate::preview::render(folder, &viewer, &maps, &scratch)?;
+    let png = crate::preview::render(folder, &viewer, &maps, &scratch, &[])?;
     println!("{}", png.display());
     Ok(())
 }

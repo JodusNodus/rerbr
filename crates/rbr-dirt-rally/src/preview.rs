@@ -200,8 +200,15 @@ fn weather(ini: &str) -> Option<&str> {
 }
 
 /// Renders `folder`'s preview with `viewer` (maps from `maps`, the install's `Maps` folder), writes `<folder>/preview.png`
-/// and names it in `track.ini`; the picture's path. `scratch` holds the prepared stage and the first render.
-pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Result<PathBuf, String> {
+/// and names it in `track.ini`; the picture's path. `scratch` holds the prepared stage and the first render, `env` is
+/// added to the viewer's environment (the launcher gives it the game folders it drives with).
+pub fn render(
+    folder: &Path,
+    viewer: &Path,
+    maps: &Path,
+    scratch: &Path,
+    env: &[(&str, PathBuf)],
+) -> Result<PathBuf, String> {
     let read = |name: &str| {
         std::fs::read_to_string(folder.join(name)).map_err(|e| format!("{}: {e}", folder.join(name).display()))
     };
@@ -214,7 +221,7 @@ pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Resu
     let mut best: Option<(f64, PathBuf)> = None;
     for (n, bend) in bends.iter().skip(first).take(TRIES).enumerate() {
         let png = scratch.join(format!("try-{n}.png"));
-        shoot(viewer, &stage, &png, bend.eye, bend.target, weather(&ini))?;
+        shoot(viewer, env, &stage, &png, bend.eye, bend.target, weather(&ini))?;
         let (dark, hidden) = judge(&png, bend)?;
         if best.as_ref().is_none_or(|b| dark + hidden < b.0) {
             best = Some((dark + hidden, png));
@@ -234,6 +241,7 @@ pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Resu
 /// One screenshot of `stage` from `eye` looking at `target`, in `sky`, to `png`.
 fn shoot(
     viewer: &Path,
+    env: &[(&str, PathBuf)],
     stage: &str,
     png: &Path,
     eye: [f64; 3],
@@ -244,6 +252,7 @@ fn shoot(
     let camera: Vec<String> = eye.iter().chain(&look).map(|v| format!("{v:.3}")).collect();
     let mut command = Command::new(viewer);
     command
+        .envs(env.iter().map(|(key, value)| (key, value)))
         .arg(stage)
         .args(["--camera", &camera.join(","), "--size", SIZE, "--fov", "50", "--clock", "13:00", "--no-hud"])
         .args(["--enhance", "all,grass", "--detail", "ultra", "--anti-aliasing", "taa", "--reflections", "high"])
