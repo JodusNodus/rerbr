@@ -902,6 +902,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == curved screen
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1014,6 +1018,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == curved screen, field of view matched
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1126,6 +1134,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == single screen, field of view matched
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1236,6 +1248,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == curved and triple on: triple wins
 RBR_DATA=<data>
 RBR_PATCH=<patch>

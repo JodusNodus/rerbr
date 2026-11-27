@@ -409,11 +409,6 @@ impl Bindings {
         Action::ALL.into_iter().find(|&a| self.get(a).key == Some(key))
     }
 
-    /// The steering's axis (both steering actions on one), if bound.
-    pub fn steering_axis(&self) -> Option<PadInput> {
-        self.shared_axis(Action::SteerLeft, Action::SteerRight)
-    }
-
     /// The axis both actions' device inputs are, if they are the same one.
     fn shared_axis(&self, a: Action, b: Action) -> Option<PadInput> {
         self.get(a).pad.filter(|p| p.is_axis() && self.get(b).pad == Some(*p))
