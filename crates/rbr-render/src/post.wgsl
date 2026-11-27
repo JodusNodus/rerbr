@@ -150,6 +150,13 @@ const LOCAL_GIVE: f32 = 0.8;
 const LOCAL_NIGHT: vec2<f32> = vec2<f32>(6.0, 10.0);
 const LOCAL_NIGHT_FROM: f32 = 1.0;
 const LOCAL_NIGHT_GIVE: f32 = 0.9;
+// In the in-car view by day (the sun over `LOCAL_SUN`, its height; ours, 2026-11-27, user: a dark band on the road and
+// hedge above the Fiat 131's bonnet) the night's values do not apply and the local exposure starts `LOCAL_IN_CAR`
+// stops later: the cabin's dark pulls the adapting light of an overcast day to EV100 5, which read as night, and the
+// white bonnet's glare, the car's own, exposed the view above it down by a stop (road 104 to 85 of 255 over 100 px;
+// 96 now, flat without the local exposure).
+const LOCAL_IN_CAR: f32 = 1.0;
+const LOCAL_SUN: vec2<f32> = vec2<f32>(0.1, 0.3);
 // The glare (after Gran Turismo 7, SIGGRAPH 2025 Physically Based Shading course; until 2026-11-05 an even blur of 6%
 // of the frame): the frame's light spread by a camera's diffraction, the Airy pattern of a round aperture, whose light
 // beyond a radius r is J0(x)^2 + J1(x)^2 with x = pi r / (lambda N), about 2 / (pi x) past the first ring. The glare
@@ -561,8 +568,13 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(bloomed.a / LEVELS * exposure.value, 1e-9) / KEY);
     let ev100 = log2(max(exposure.adapting, 1e-6) * 100.0 / CALIBRATION);
-    let night = 1.0 - smoothstep(LOCAL_NIGHT.x, LOCAL_NIGHT.y, ev100);
-    let begin = mix(LOCAL_FROM, LOCAL_NIGHT_FROM, night);
+    var night = 1.0 - smoothstep(LOCAL_NIGHT.x, LOCAL_NIGHT.y, ev100);
+    var in_car_day = 0.0;
+    if (meter.cabin_depth > 0.0) {
+        in_car_day = smoothstep(LOCAL_SUN.x, LOCAL_SUN.y, meter.to_sun.y);
+        night *= 1.0 - in_car_day;
+    }
+    let begin = mix(LOCAL_FROM, LOCAL_NIGHT_FROM, night) + LOCAL_IN_CAR * in_car_day;
     let give = mix(LOCAL_GIVE, LOCAL_NIGHT_GIVE, night);
     let linear = max(lit * exposure.value * exp2(-give * max(broad - begin, 0.0)), vec3<f32>(0.0));
     let d = display();
