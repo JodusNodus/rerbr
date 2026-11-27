@@ -138,6 +138,10 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   the upscale's frame alone 3/4 by 32 (was 64); edges (guard rail, fence wire) still smooth, still frames unchanged,
   the 36 reference shots within 0.35/65535 RMSE, no added work. Tried: a sharper history cubic (Keys a = -1.5: wavy
   ridges on gravel; -1: +10-35 %, dropped for the simpler change); a negative mip bias was tried before (above).
+  Foliage smear (2026-11-27, user: vegetation trails while driving, gone with `--anti-aliasing off`): `fs_taa`'s clip
+  box is the 3x3 (was the cross), both resolves tighten it to 0.6 of `CLIP_SIGMAS` by 8 pixels a frame
+  (`clip_sigmas`), and the speed's share rises as the square root of speed / 32 (`moving`). Shader validation only:
+  not yet compared by eye or measured.
   Glass over the car (the dash below the windscreen, the cabin behind the windows, lamp lenses) gathers as the rest:
   the mask takes the frame new only where the stage is behind the glass (2026-10-31). The lower windscreen (alpha about
   0.9 at its grazing angle) was taken new every frame, its dash edges and reflected cabin never smoothed; its

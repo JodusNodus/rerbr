@@ -1,13 +1,13 @@
 // Temporal anti-aliasing (`taa.rs`; ours, after gp4's): one full-screen pass at the frame's size, between the scene
 // and the post pass. The scene (`scene`) was drawn with its projection shifted by a sub-pixel jitter, so the history
 // gathers samples spread over each pixel. For each pixel:
-//   * the current colour and its four edge neighbours, in a tone-mapped space (c / (1 + luma)) so that a single bright
+//   * the current colour and its 3x3 neighbours, in a tone-mapped space (c / (1 + luma)) so that a single bright
 //     sample cannot dominate;
 //   * motion: where something that moves of itself was drawn, the motion the renderer's motion pass wrote
 //     (`motion.wgsl`), else the point from the depth (reversed) carried by the unjittered view-projections, current to
 //     previous;
 //   * history: the previous output there (Catmull-Rom, 5 bilinear taps), clipped toward the neighbourhood's mean in
-//     YCoCg (variance clipping, Salvi 2016);
+//     YCoCg (variance clipping, Salvi 2016), the box tightened where the pixel moves;
 //   * blend: a tenth of the new frame, more where the history was clipped hard or the pixel moves fast; all of it
 //     after a reset (a cut, a resize).
 // The car's glass (its blended draws, the panes' mud) moves with the car and what shows through it with the stage: its
@@ -120,6 +120,22 @@ fn history_at(uv: vec2<f32>) -> vec4<f32> {
     return catmull_rom(history, uv, t.output);
 }
 
+// The clip box's half size, in sigmas, for a pixel moving `speed` pixels a frame: `params.y` still, tightened to
+// `MOVING_CLIP` of it by `MOVING_CLIP_SPEED`, so that what passes by (foliage, the roadside) does not trail its
+// history while a still view keeps its anti-aliasing.
+const MOVING_CLIP: f32 = 0.6;
+const MOVING_CLIP_SPEED: f32 = 8.0;
+
+fn clip_sigmas(speed: f32) -> f32 {
+    return t.params.y * mix(1.0, MOVING_CLIP, clamp(speed / MOVING_CLIP_SPEED, 0.0, 1.0));
+}
+
+// How much a pixel moving `speed` pixels a frame takes the new frame, 0 to 1 by 32 pixels: rising early (square root)
+// so that the slower roadside does not smear either.
+fn moving(speed: f32) -> f32 {
+    return sqrt(clamp(speed / 32.0, 0.0, 1.0));
+}
+
 // `h` clipped toward the box's centre `c` +- `e`, along the line to the centre.
 fn clip_box(h: vec3<f32>, c: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
     let d = h - c;
@@ -163,7 +179,6 @@ fn fs_taa_mist(in: Out) -> Resolved {
 fn resolved(in: Out) -> Resolved {
     let pixel = vec2<i32>(in.position.xy);
     let uv = in.position.xy * t.size.zw;
-    // The pixel and its four edge neighbours: the clip's colour box.
     let s0 = tone(load_scene(pixel));
     let mask = clamp(textureLoad(scene, pixel, 0).a, 0.0, 1.0);
     if (t.params.w > 1.5) {
@@ -174,13 +189,18 @@ fn resolved(in: Out) -> Resolved {
     if (t.params.z > 0.5) {
         return Resolved(fresh, fresh);
     }
-    let y0 = to_ycocg(s0);
-    let y1 = to_ycocg(tone(load_scene(pixel + vec2<i32>(1, 0))));
-    let y2 = to_ycocg(tone(load_scene(pixel - vec2<i32>(1, 0))));
-    let y3 = to_ycocg(tone(load_scene(pixel + vec2<i32>(0, 1))));
-    let y4 = to_ycocg(tone(load_scene(pixel - vec2<i32>(0, 1))));
-    let m1 = (y0 + y1 + y2 + y3 + y4) * 0.2;
-    let m2 = (y0 * y0 + y1 * y1 + y2 * y2 + y3 * y3 + y4 * y4) * 0.2;
+    // The 3x3 about the pixel (the cross alone left a loose box on foliage's thin, varied detail).
+    var m1 = vec3<f32>(0.0);
+    var m2 = vec3<f32>(0.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let yc = to_ycocg(tone(load_scene(pixel + vec2<i32>(x, y))));
+            m1 += yc;
+            m2 += yc * yc;
+        }
+    }
+    m1 /= 9.0;
+    m2 /= 9.0;
     // The pixel's centre, unjittered: the history has no jitter, so a still view keeps it in place.
     let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let here = vec4<f32>(ndc, textureLoad(depth, pixel, 0), 1.0);
@@ -196,13 +216,13 @@ fn resolved(in: Out) -> Resolved {
     }
     let kept = history_at(prev);
     let held = to_ycocg(tone(kept.rgb));
-    let sigma = sqrt(max(m2 - m1 * m1, vec3<f32>(0.0)));
-    let clipped = clip_box(held, m1, sigma * t.params.y + vec3<f32>(1.0e-3));
-    // The new frame's share: the base, more where the history moved a lot (uncovered) or the pixel moves fast
-    // (each frame's resampling blurs the history: up to 0.3 more at 32 pixels a frame, the near road at speed).
-    let moved = length((clipped - held) / max(m1.x, 0.02));
     let speed = length(motion * t.size.xy);
-    var share = clamp(t.params.x + 0.25 * clamp(moved, 0.0, 1.0) + 0.3 * clamp(speed / 32.0, 0.0, 1.0), 0.03, 1.0);
+    let sigma = sqrt(max(m2 - m1 * m1, vec3<f32>(0.0)));
+    let clipped = clip_box(held, m1, sigma * clip_sigmas(speed) + vec3<f32>(1.0e-3));
+    // The new frame's share: the base, more where the history moved a lot (uncovered) or the pixel moves fast
+    // (each frame's resampling blurs the history: the near road at speed, foliage passing by).
+    let moved = length((clipped - held) / max(m1.x, 0.02));
+    var share = clamp(t.params.x + 0.25 * clamp(moved, 0.0, 1.0) + 0.3 * moving(speed), 0.03, 1.0);
     // Clean glass (alpha below GLASS.x) gathers as the rest; mud and drops (GLASS.y) are taken new, but not over the car,
     // which moves with them.
     share = max(share, smoothstep(GLASS.x, GLASS.y, max(mask, kept.a)) * (1.0 - previous.z));
@@ -286,17 +306,17 @@ fn fs_upscale(in: Out) -> Resolved {
     if (t.params.z < 0.5 && all(prev >= vec2<f32>(0.0)) && all(prev <= vec2<f32>(1.0))) {
         let kept = history_at(prev);
         let held = to_ycocg(tone(kept.rgb));
+        let speed = length(motion * t.output.xy);
         let mean = m1 / 9.0;
         let sigma = sqrt(max(m2 / 9.0 - mean * mean, vec3<f32>(0.0)));
-        let clipped_y = clip_box(held, mean, sigma * t.params.y + vec3<f32>(1.0e-3));
+        let clipped_y = clip_box(held, mean, sigma * clip_sigmas(speed) + vec3<f32>(1.0e-3));
         let clipped = from_ycocg(clipped_y);
         let moved = length((clipped_y - held) / max(mean.x, 0.02));
         // `mix(clipped, gathered / weight, share)`, without dividing by a weight near 0 (no sample near).
         let rate = t.jitter.w * (1.0 + 4.0 * clamp(moved, 0.0, 1.0));
         let share = min(gathered.w * rate, 1.0);
         let gathers = clipped * (1.0 - share) + gathered.rgb * select(rate, 1.0 / gathered.w, share == 1.0);
-        let speed = length(motion * t.output.xy);
-        var taken = 0.25 * clamp(moved, 0.0, 1.0) + 0.75 * clamp(speed / 32.0, 0.0, 1.0);
+        var taken = 0.25 * clamp(moved, 0.0, 1.0) + 0.75 * moving(speed);
         // The glass's mud and drops, as in `fs_taa`.
         taken = max(taken, smoothstep(GLASS.x, GLASS.y, max(mask, kept.a)) * (1.0 - previous.z));
         c = vec4<f32>(untone(mix(gathers, alone, taken)), mask);
