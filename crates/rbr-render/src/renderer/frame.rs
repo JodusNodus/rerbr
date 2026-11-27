@@ -191,16 +191,7 @@ impl Renderer {
             }
             if let Some(glass) = &mut self.glass {
                 let cascades = self.cascades.as_ref();
-                glass.prepare(
-                    &self.device,
-                    &self.queue,
-                    drawn[0],
-                    size,
-                    &lit,
-                    self.outside_view,
-                    self.wetness,
-                    cascades,
-                );
+                glass.prepare(&self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, cascades);
             }
             let day = self.day_light();
             let street = self.street_lamps(crate::camera::eye(effects_view), crate::effects::AIR_STREET);
@@ -478,7 +469,7 @@ impl Renderer {
         lens: &wgpu::TextureView,
     ) {
         if let Some(glass) = &self.glass {
-            glass.draw_half(&self.device, encoder, lens, (&self.mirrors.view, &self.mirrors.uniform));
+            glass.compute(&self.device, encoder);
         }
         let attachment = self.over_attachment(encoder, target, scene);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

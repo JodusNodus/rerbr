@@ -27,7 +27,8 @@ struct Frame {
     // Their last strokes, newest first: the angle fraction each went from and to, the seconds since it began and
     // since it ended (0 while under way); none where x == y.
     strokes: array<vec4<f32>, 4>,
-    // x the newest stroke's number, y how fast the film builds per second, z the most it holds.
+    // x the newest stroke's number, y how fast the film builds per second, z the most it holds, w 1 when the windscreen's
+    // beads are simulated (`glass/sim.rs`).
     wiping: vec4<f32>,
     // The windscreen's film cells: the first's low corner and a cell's size, chart metres.
     film: vec4<f32>,
@@ -61,8 +62,30 @@ struct MirrorViews {
 @group(0) @binding(5) var mirror_images: texture_2d_array<f32>;
 @group(0) @binding(6) var<uniform> mirror_views: MirrorViews;
 const WINDSCREEN_MIRROR: u32 = 4u;
-// The film's cells drawn at half size (`glass::gpu::HALF_FILM_FROM`), premultiplied, for `fs_film_half`.
-@group(0) @binding(7) var half_film: texture_2d<f32>;
+// The beads' squares (`bead_square`, `gpu::Pass::squares`): per pane and layer where its table lies in `squares`.
+struct Table {
+    // The lowest square's number, and the squares across and up.
+    origin: vec2<i32>,
+    dims: vec2<u32>,
+    offset: u32,
+    pane: u32,
+    // 1 on a side window (no wipers).
+    side: u32,
+    layer: u32,
+    // The pane's film cell size (metres) and landing clock, as a film cell carries them in `normal`.
+    size: vec2<f32>,
+    landed: f32,
+    pad: f32,
+}
+@group(0) @binding(7) var<storage, read> tables: array<Table>;
+@group(0) @binding(8) var<storage, read> squares: array<vec4<u32>>;
+// `bead_squares`' own bindings (group 1), the same table written (`squares` is its reader).
+@group(1) @binding(0) var<storage, read_write> made: array<vec4<u32>>;
+// What a film cell's noise is over the glass, baked once (`bake_statics`): per pane kind (windscreen, side window) the
+// waves' slope (xy), the blotch (z) and the outside's mottle (w), `STATIC_TEXELS` a cell, sampled across the cells.
+@group(0) @binding(9) var statics: texture_2d_array<f32>;
+@group(1) @binding(1) var baked: texture_storage_2d_array<rgba16float, write>;
+const STATIC_TEXELS: f32 = 16.0;
 
 struct Instance {
     @location(0) centre: vec3<f32>,
@@ -113,6 +136,10 @@ fn to_screen(clip: vec4<f32>) -> vec2<f32> {
 
 @vertex
 fn vs_main(@builtin(vertex_index) corner: u32, instance: Instance) -> Out {
+    return place_instance(corner, instance);
+}
+
+fn place_instance(corner: u32, instance: Instance) -> Out {
     let x = f32(corner & 1u) * 2.0 - 1.0;
     let y = f32((corner >> 1u) & 1u) * 2.0 - 1.0;
     var world = instance.centre + instance.axis_u * x + instance.axis_v * y;
@@ -210,6 +237,37 @@ fn wet_noise(p: vec2<f32>, pane: f32) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
+// The outside's mottle over the film at `cell` (cells from the low corner), `side` on a side window.
+fn film_mottle(cell: vec2<f32>, pane: f32) -> f32 {
+    let p = vec2<f32>(cell.x, cell.y / WET_STREAK);
+    return 0.65 * wet_noise(p / 3.0, pane) + 0.35 * wet_noise(vec2<f32>(cell.x, cell.y / 2.0), pane + 2.0);
+}
+
+// The film's noise at `cell`: the waves' slope (xy, the shift's direction and size), the blotch (z), the mottle (w).
+fn film_noise(cell: vec2<f32>, pane: f32) -> vec4<f32> {
+    let p = cell * 2.0;
+    let n0 = wet_noise(p, pane + 4.0);
+    let slope = vec2<f32>(wet_noise(p + vec2<f32>(0.25, 0.0), pane + 4.0) - n0, wet_noise(p + vec2<f32>(0.0, 0.25), pane + 4.0) - n0) * 4.0;
+    let blotch = wet_noise(vec2<f32>(cell.x * 1.3, cell.y * 1.3 / WET_STREAK), pane + 8.0);
+    return vec4<f32>(slope, blotch, film_mottle(cell, pane));
+}
+
+@compute @workgroup_size(8, 8)
+fn bake_statics(@builtin(global_invocation_id) id: vec3<u32>) {
+    let size = textureDimensions(baked);
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+    let cell = (vec2<f32>(id.xy) + 0.5) / STATIC_TEXELS;
+    textureStore(baked, id.xy, id.z, film_noise(cell, f32(id.z)));
+}
+
+// `film_noise` as baked, at `cell` (film cells from the pane's low corner).
+fn film_statics(cell: vec2<f32>, side: bool) -> vec4<f32> {
+    let size = vec2<f32>(textureDimensions(statics).xy);
+    return textureSampleLevel(statics, scene_sampler, cell * STATIC_TEXELS / size, select(0, 1, side), 0.0);
+}
+
 // The layer over this pixel of a film cell: premultiplied light.
 fn wet_layer(in: Out, film: f32) -> vec4<f32> {
     let cell_px = in.centre.z * 2.0 * frame.screen.y;
@@ -220,9 +278,7 @@ fn wet_layer(in: Out, film: f32) -> vec4<f32> {
     let index = u32(in.alpha);
     let t = in.local * 0.5 + 0.5;
     let cell = vec2<f32>(f32(index % u32(FILM_COLUMNS)), f32(index / u32(FILM_COLUMNS))) + t;
-    let pane = select(0.0, 1.0, in.seed < 0.0);
-    let p = vec2<f32>(cell.x, cell.y / WET_STREAK);
-    let mottle = 0.65 * wet_noise(p / 3.0, pane) + 0.35 * wet_noise(vec2<f32>(cell.x, cell.y / 2.0), pane + 2.0);
+    let mottle = film_statics(cell, in.seed < 0.0).w;
     let a = WET_LIGHT * film * smoothstep(0.4, 0.8, mottle) * fade;
     return vec4<f32>(linear(frame.light.rgb) * a, a);
 }
@@ -424,34 +480,64 @@ fn turned(v: vec2<f32>, cs: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
 }
 
+// What a square of a layer's lattice holds (`bead_squares` fills the table, once a frame, for `bead_layer`): its bead's
+// hashed bytes (taken with the stroke that last wiped its middle), that stroke's number and age, and its patch's share.
+fn bead_square(t: Table, square: vec2<i32>) -> vec4<u32> {
+    let turn = select(BEAD_TURN.x, BEAD_TURN.y, t.layer == 1u);
+    let pitch = select(BEAD_PITCH.x, BEAD_PITCH.y, t.layer == 1u);
+    let cs = vec2<f32>(cos(turn), sin(turn));
+    let id = vec2<u32>(square + vec2<i32>(32768));
+    let key = (id.x * 73856093u) ^ (id.y * 19349663u) ^ (t.pane * 83492791u) ^ (t.layer * 2654435761u);
+    let life = bytes(hash1(key));
+    let generation = floor(t.landed / mix(BEAD_LIFE.x, BEAD_LIFE.y, life.x) + life.y);
+    let middle = turned((vec2<f32>(square) + 0.5) * pitch, cs);
+    var own = vec4<f32>(NEVER, -1.0, 0.0, 0.0);
+    if (t.side == 0u) {
+        own = last_wipe(frame.film.xy + middle);
+    }
+    let h = hash1(key ^ (u32(own.y + 1.0) * 0x9e3779b9u) ^ (u32(generation) * 0x85ebca6bu));
+    let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(middle / BEAD_PATCH, 52u));
+    return vec4<u32>(h, bitcast<u32>(own.y), bitcast<u32>(own.x), bitcast<u32>(patchy));
+}
+
+@compute @workgroup_size(64)
+fn bead_squares(@builtin(global_invocation_id) id: vec3<u32>) {
+    let t = tables[id.y];
+    if (id.x >= t.dims.x * t.dims.y) {
+        return;
+    }
+    let square = vec2<i32>(i32(id.x % t.dims.x), i32(id.x / t.dims.x)) + t.origin;
+    made[t.offset + id.x] = bead_square(t, square);
+}
+
 // The bead of one layer over this pixel of a film cell, premultiplied; `film` the cells' film here, `at` the pixel on
 // the pane (metres from its film's low corner), `metres` a film cell's size, `wipe` the blade's last pass here.
-fn bead_layer(in: Out, film: f32, at: vec2<f32>, metres: vec2<f32>, wipe: vec4<f32>, pitch: f32, turn: f32, sizes: vec2<f32>, fill: f32, salt: u32) -> vec4<f32> {
+fn bead_layer(in: Out, film: f32, at: vec2<f32>, metres: vec2<f32>, wipe: vec4<f32>, pitch: f32, turn: f32, sizes: vec2<f32>, fill: f32, layer: u32) -> vec4<f32> {
     let cs = vec2<f32>(cos(turn), sin(turn));
     // The pixel in the lattice's squares.
     let p = turned(at, vec2<f32>(cs.x, -cs.y)) / pitch;
     let nearest = floor(p - 0.5);
-    let pane = u32(in.normal.w);
+    let table = tables[u32(in.normal.w) * 2u + layer];
     // The bead the pixel lies deepest in: its centre (squares), radius (squares) and own number.
     var deepest = 1.0;
     var bead = vec4<f32>(0.0);
     for (var k = 0u; k < 4u; k++) {
         let square = nearest + vec2<f32>(f32(k & 1u), f32(k >> 1u));
-        let id = vec2<u32>(vec2<i32>(square) + vec2<i32>(32768));
-        let key = (id.x * 73856093u) ^ (id.y * 19349663u) ^ (pane * 83492791u) ^ (salt * 2654435761u);
-        let life = bytes(hash1(key));
-        let generation = floor(in.normal.z / mix(BEAD_LIFE.x, BEAD_LIFE.y, life.x) + life.y);
-        let h = bytes(hash1(key ^ (u32(wipe.y + 1.0) * 0x9e3779b9u) ^ (u32(generation) * 0x85ebca6bu)));
+        let at_table = vec2<i32>(square) - table.origin;
+        if (any(at_table < vec2<i32>(0)) || any(vec2<u32>(at_table) >= table.dims)) {
+            continue;
+        }
+        let entry = squares[table.offset + u32(at_table.y) * table.dims.x + u32(at_table.x)];
+        let h = bytes(entry.x);
         let radius = mix(sizes.x, sizes.y, h.y * h.y * h.y) / pitch;
         let d = (p - square - h.zw) / radius;
         // `outline` lies within the unit disc.
         if (dot(d, d) >= 1.0) {
             continue;
         }
-        let middle = turned((square + 0.5) * pitch, cs);
-        let own = wipe_on(in, middle);
-        let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(middle / BEAD_PATCH, 52u));
-        if (own.y != wipe.y || h.x >= bead_share(film, own) * fill * patchy) {
+        // The bead's own stroke is the pixel's (it is cut at a stroke's edge).
+        let own = vec4<f32>(bitcast<f32>(entry.z), bitcast<f32>(entry.y), 0.0, 0.0);
+        if (own.y != wipe.y || h.x >= bead_share(film, own) * fill * bitcast<f32>(entry.w)) {
             continue;
         }
         let vary = fract(h.z * 5.3 + h.w);
@@ -597,13 +683,11 @@ fn film_cell(in: Out) -> vec4<f32> {
     let film = film_after(cells, wipe);
     let smeared = smear(wipe);
     let index = u32(in.alpha);
-    let pane = select(0.0, 1.0, in.seed < 0.0);
     let cell = vec2<f32>(f32(index % u32(FILM_COLUMNS)), f32(index / u32(FILM_COLUMNS))) + t;
     // The waves: a noise over the film, its slope the shift.
-    let p = vec2<f32>(cell.x * 2.0, cell.y * 2.0);
-    let n0 = wet_noise(p, pane + 4.0);
-    let slope = vec2<f32>(wet_noise(p + vec2<f32>(0.25, 0.0), pane + 4.0) - n0, (wet_noise(p + vec2<f32>(0.0, 0.25), pane + 4.0) - n0)) * 4.0;
-    let blotch = wet_noise(vec2<f32>(cell.x * 1.3, cell.y * 1.3 / WET_STREAK), pane + 8.0);
+    let noise = film_statics(cell, in.seed < 0.0);
+    let slope = noise.xy;
+    let blotch = noise.z;
     let cover = film * FILM_COVER * smoothstep(0.25, 0.6, blotch * 0.8 + film * 0.55) + smeared * SMEAR_COVER;
     let at = (in.position.xy + slope * (film + smeared) * FILM_WARP) * frame.screen.zw;
     let to_uv = vec2<f32>(frame.screen.y * frame.screen.z, 1.0) * FILM_BLUR;
@@ -616,7 +700,11 @@ fn film_cell(in: Out) -> vec4<f32> {
         sum += textureSampleLevel(scene, scene_sampler, clamp(at + offset, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
     }
     let colour = sum * 0.25;
-    let bead = beads(in, cells, t, wipe);
+    // Simulated: the windscreen's beads are the simulation's (`sim_draw.wgsl`); the side windows keep these.
+    var bead = vec4<f32>(0.0);
+    if (frame.wiping.w == 0.0 || in.seed < 0.0) {
+        bead = beads(in, cells, t, wipe);
+    }
     let layer = wet_layer(in, film);
     var under = vec4<f32>(bead.rgb + colour * cover * (1.0 - bead.a), bead.a + cover * (1.0 - bead.a));
     let ridge = blade_water(in, t, film);
@@ -654,11 +742,6 @@ fn fs_film(in: Out) -> @location(0) vec4<f32> {
     return film_cell(in);
 }
 
-// The film's cells drawn at half size laid over the frame through their quads, depth tested.
-@fragment
-fn fs_film_half(in: Out) -> @location(0) vec4<f32> {
-    return textureSampleLevel(half_film, scene_sampler, in.position.xy * frame.screen.zw, 0.0);
-}
 
 @fragment
 fn fs_pane(in: Out) -> @location(0) vec4<f32> {

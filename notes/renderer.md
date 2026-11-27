@@ -1122,11 +1122,34 @@ beads 0.94, their fine layer 0.5, a lens each costing nothing more; the blade's 
 and blend 0.15), the pane's cells 0.8, the drops and ribbons nothing. Shading the sheet's view only where it covers
 anything: no gain. The beads' cost is their squares' lookups, not their lenses. The film and the panes' cells have
 their own pipelines (`fs_film`, `fs_pane`, `gpu::PIPELINES`): RADV stats put the one shader at 60 VGPRs (24 waves), now
-the film 60, the panes and the rest 48 (32 waves); no measurable time gain alone. Under `Detail::High` from 1800 rows
-(4K) the film's cells seen from inside are drawn at half size (`HALF_FILM_FROM`, `Pass::draw_half`) and laid over
-through their full-size quads, depth tested: 450 rain / 127 wet cockpits -0.88 / -0.61 ms, RMSE 0.026 / 0.014, beads
-softer and the smallest fade, no flicker. User decision 2026-11-06: High only, Ultra keeps the film whole. Tried and
-dropped: the fine beads left out at 4K (-0.43 / -0.29 ms; the glass reads much drier).
+the film 60, the panes and the rest 48 (32 waves); no measurable time gain alone. Tried and dropped: the fine beads
+left out at 4K (-0.43 / -0.29 ms; the glass reads much drier); the film drawn at half size at 4K under `Detail::High`
+(2026-11-06 to 11-26, -0.88 ms then; after the Standard film below only -0.29 ms for softer beads, removed by the
+user's decision 2026-11-26: the detail no longer touches the glass).
+
+Standard film (2026-11-26, 450 heavy rain cockpit, 4K, RX 9060 XT, "particles, glass, rain", full-size film): 2.62 to 1.58
+ms in two steps, the picture the same. (1) The beads' squares are made once a frame (`bead_squares` compute in
+`glass.wgsl`, `Pass::set_tables`/`make_squares`): per pane and layer a table of the lattice squares the pane's cells
+reach (`lattice_squares`), each holding its bead's hash (with the stroke that last wiped its middle), that stroke's
+number and age, and its patch's share; `bead_layer` reads the 2 x 2 squares' entries and keeps the pixel's `bead_share`
+and lens. 2.62 to 1.98 ms, 4K shot byte-identical. (2) The waves' slope, the blotch and the outside's mottle (position
+only) baked once into a 16-texel-a-cell rgba16f texture (`bake_statics`, `film_statics`): 1.98 to 1.58 ms, 4K RMSE
+0.08 of 255 (largest difference 7, 3 px in a million over 2).
+
+Simulated windscreen water (ours, 2026-11-26, `glass/sim.rs`, `sim.wgsl`, `sim_draw.wgsl`; the launcher's Windscreen
+effects, `--windscreen-effects simulated`, Standard the default): the windscreen's fine water is a GPU simulation instead of the film's procedural beads (the
+sheet, the blade's ridge, the CPU drops, side windows stay as they are). 65536 bead slots (centre, radius, velocity) in
+the glass's chart; a grid of 1.5 mm cells (largest bead per cell, `atomicMax`) finds touching beads. Fixed 1/120 s
+substeps from the glass's steps (`sim::Queue`, time carried, spawns seeded by the substep number; the 8 s warm-up is
+~960 substeps in the first frame), 7 compute passes each: integrate (the model's pin, grip patches, airflow and felt
+gravity; the blades push beads to their leading edge; a runner sheds small beads), find the beater that touches,
+merge by volume (integer atomics, so order-free), apply, rain and shed spawns by hash claim. Drawn as `lens` quads
+(`vs_bead`) between the film and the drops, placed by the film's corners. Running CPU drops cut the beads on their
+path. Cost against Standard (2026-11-26, RX 9060 XT, "particles, glass, rain", which holds the compute; two runs each
+within 0.01 ms, heavy rain cockpits): Luceram GC8 1080p 0.48 / 0.45, 1440p 0.77 / 0.71, 4K 1.59 / 1.46 ms; Luceram GR
+Yaris 0.44 / 0.40, 0.69 / 0.63, 1.43 / 1.30; Sipirkakim GC8 0.52 / 0.49, 0.81 / 0.76, 1.71 / 1.58. Two 1080p runs
+byte-identical; Standard's shots unchanged by it. User 2026-11-26: its sparser beads read better than Standard's. Open: bead size and rate tuned by eye, no film-sheet coupling to the beads, no wet trails
+behind simulated runners.
 
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
 `--wipers`, key I). Drops are lenses over the resolved frame; a wet film blurs it. Camera dirt on outside views is
