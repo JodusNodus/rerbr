@@ -52,7 +52,7 @@ pub fn default_name(route: &Route) -> String {
 /// Converts the route `id` (`location/area/route_<n>`) of `install`.
 pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, String> {
     let route = install.route(id)?;
-    if !route.is_rally() && !route.is_rallycross() && !route.area.starts_with("pikes_peak") {
+    if !route.is_rally() && !route.is_rallycross() && !route.is_pikes_peak() {
         return Err(format!("{id}: only rally stages, rallycross and Pikes Peak convert (not the frontend)"));
     }
     let control = &options.control;

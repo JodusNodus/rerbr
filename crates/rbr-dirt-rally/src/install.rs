@@ -30,7 +30,7 @@ impl Route {
         format!("{}/{}/route_{}", self.location, self.area, self.index)
     }
 
-    /// Rally stages only: rallycross circuits and Pikes Peak are other formats, the frontend holds none.
+    /// Rally stages only: rallycross circuits and Pikes Peak have their own methods, the frontend holds none.
     pub fn is_rally(&self) -> bool {
         self.area.contains("_rally_")
     }
@@ -38,6 +38,11 @@ impl Route {
     /// A rallycross venue's layout (`holjes_rallycross`): a closed lap.
     pub fn is_rallycross(&self) -> bool {
         self.area.ends_with("_rallycross")
+    }
+
+    /// A Pikes Peak climb (`pikes_peak`, `pikes_peak_historic`): a stage by its gates, with a name of its own.
+    pub fn is_pikes_peak(&self) -> bool {
+        self.area.starts_with("pikes_peak")
     }
 }
 

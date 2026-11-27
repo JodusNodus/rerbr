@@ -51,7 +51,7 @@ impl Picker {
             let install = Install::at(&folder)?;
             let routes = listing::list(&install);
             if routes.is_empty() {
-                return Err("it has no rally stages or rallycross circuits".into());
+                return Err("it has no rally stages or Pikes Peak sections".into());
             }
             Ok(Scanned { data: install.data, routes })
         }));
@@ -75,7 +75,8 @@ impl Picker {
             route("greece", "ghymno_rally_01", "Greece, Ghymno 1, long forward", 0, rally, 9.7),
             route("greece", "ghymno_rally_01", "Greece, Ghymno 1, long reverse", 1, rally, 9.7),
             route("greece", "ghymno_rally_01", "Greece, Ghymno 1, first half forward", 2, rally, 4.8),
-            route("sweden", "holjes_rallycross", "Höljes", 0, Kind::Rallycross, 1.0),
+            route("usa", "pikes_peak", "Pikes Peak, full climb", 0, Kind::PikesPeak, 19.5),
+            route("usa", "pikes_peak", "Pikes Peak, section 1", 2, Kind::PikesPeak, 6.3),
         ];
         self.picked = [&routes[0], &routes[2], &routes[4]].map(|l| l.id.clone()).into();
         self.added = [routes[1].folder.clone()].into();
@@ -165,7 +166,7 @@ impl Picker {
             });
         }
         ui.add_space(10.0);
-        kit::hint(ui, "Each stage takes 0.4 to 0.8 GB and about a minute to convert, picture included.");
+        kit::hint(ui, "Each stage takes 0.4 to 0.9 GB and up to a minute and a half to convert, picture included.");
         change
     }
 }
@@ -184,7 +185,7 @@ fn route_row(ui: &mut egui::Ui, route: &Listed, picked: &mut BTreeSet<String>, a
     // `Greece, Ghymno 1, long reverse` is listed under Greece as `Ghymno 1, long reverse`.
     let name = match route.kind {
         Kind::Rally => route.title.split_once(", ").map_or(route.title.as_str(), |(_, rest)| rest),
-        Kind::Rallycross => route.title.as_str(),
+        Kind::PikesPeak => route.title.as_str(),
     };
     ui.horizontal(|ui| {
         let mut on = added || picked.contains(&route.id);
@@ -199,8 +200,7 @@ fn route_row(ui: &mut egui::Ui, route: &Listed, picked: &mut BTreeSet<String>, a
             if added {
                 ui.label(RichText::new("Added").size(12.0).color(GOOD));
             } else if let Some(length) = route.length {
-                let lap = if route.kind == Kind::Rallycross { " lap" } else { "" };
-                ui.label(RichText::new(format!("{:.1} km{lap}", length / 1000.0)).size(12.0).color(TEXT_3));
+                ui.label(RichText::new(format!("{:.1} km", length / 1000.0)).size(12.0).color(TEXT_3));
             }
         });
     });
@@ -242,9 +242,8 @@ impl Form {
                             ui.label(RichText::new("DiRT Rally").family(medium()).color(TEXT));
                             ui.label(RichText::new("your own install").font(mono(11.5)).color(TEXT_3));
                         });
-                        let what =
-                            "Rally stages and rallycross circuits, converted from your copy of the game. Choose \
-                                    its folder, then the stages.";
+                        let what = "Rally stages and Pikes Peak, converted from your copy of the game. Choose its \
+                                    folder, then the stages.";
                         ui.add(egui::Label::new(RichText::new(what).size(12.0).color(TEXT_2)).wrap());
                         ui.add_space(10.0);
                     });

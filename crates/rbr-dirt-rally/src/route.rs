@@ -353,7 +353,9 @@ pub fn title(route: &Route) -> String {
     }
     let area = route.area.split("_rally_");
     let (base, number) = (area.clone().next().unwrap_or_default(), area.last().filter(|_| route.is_rally()));
-    let words: Vec<String> = base.split('_').map(capitalise).collect();
+    // A number in the folder's name is a number (`historic_02` is `Historic 2`).
+    let words: Vec<String> =
+        base.split('_').map(|w| w.parse::<u32>().map_or_else(|_| capitalise(w), |n| n.to_string())).collect();
     let mut title = words.join(" ");
     if let Some(n) = number.and_then(|n| n.parse::<u32>().ok()) {
         title = format!("{title} {n}");
@@ -363,7 +365,20 @@ pub fn title(route: &Route) -> String {
             let direction = if role.is_reverse() { "reverse" } else { "forward" };
             format!("{}, {title}, {} {direction}", capitalise(&route.location), role.part())
         }
+        None if route.is_pikes_peak() => format!("{title}, {}", climb_part(route.index)),
         None => format!("{title}, route {}", route.index),
+    }
+}
+
+/// Which part of a Pikes Peak climb a route covers: 0 is all of it; 2, 4 and 6 are its three sections in order
+/// (6.3, 6.5 and 7.1 km: their start and finish gates lie on route 0's at 0 to 6.3, 6.3 to 12.8 and 12.4 to 19.5 km).
+fn climb_part(index: u32) -> String {
+    match index {
+        0 => "full climb".into(),
+        2 => "section 1".into(),
+        4 => "section 2".into(),
+        6 => "section 3".into(),
+        n => format!("route {n}"),
     }
 }
 
@@ -546,7 +561,9 @@ mod tests {
         assert_eq!(title(&r), "France, Col De Turini 2, second half forward");
         assert_eq!(country(&r), Some("FR"));
         let r = route("usa", "pikes_peak_historic", 2);
-        assert_eq!((role(&r), title(&r)), (None, "Pikes Peak Historic, route 2".into()));
+        assert_eq!((role(&r), title(&r)), (None, "Pikes Peak Historic, section 1".into()));
+        assert_eq!(title(&route("usa", "pikes_peak", 0)), "Pikes Peak, full climb");
+        assert_eq!(title(&route("usa", "pikes_peak_historic_02", 6)), "Pikes Peak Historic 2, section 3");
         assert_eq!(role(&route("uk", "hafren_rally_01", 9)), None);
         assert_eq!(country(&route("mars", "a", 0)), None);
         assert_eq!(place(&route("france", "col_de_turini_rally_01", 0)), Some([43.98, 7.39]));
