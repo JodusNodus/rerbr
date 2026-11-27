@@ -32,7 +32,8 @@ struct Meter {
     // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's; `z` the
     // sharpening (`sharpened`); `w` an HDR display's headroom (`HDR`).
     grade: vec4<f32>,
-    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered; `y` unused.
+    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered; `y` in the
+    // in-car view the depth (reversed) nearer than which a pixel is the car's (`post::CAR_REACH`).
     fixed: vec4<f32>,
     // What tells the share of the view the sun lights (`post::Sunlit`): the view's inverse, the clouds' shadow map's
     // parameters (`volume_shadow`; zero without the map), the way to the sun and, in `w`, the sunny day's exposure
@@ -150,13 +151,6 @@ const LOCAL_GIVE: f32 = 0.8;
 const LOCAL_NIGHT: vec2<f32> = vec2<f32>(6.0, 10.0);
 const LOCAL_NIGHT_FROM: f32 = 1.0;
 const LOCAL_NIGHT_GIVE: f32 = 0.9;
-// In the in-car view by day (the sun over `LOCAL_SUN`, its height; ours, 2026-11-27, user: a dark band on the road and
-// hedge above the Fiat 131's bonnet) the night's values do not apply and the local exposure starts `LOCAL_IN_CAR`
-// stops later: the cabin's dark pulls the adapting light of an overcast day to EV100 5, which read as night, and the
-// white bonnet's glare, the car's own, exposed the view above it down by a stop (road 104 to 85 of 255 over 100 px;
-// 96 now, flat without the local exposure).
-const LOCAL_IN_CAR: f32 = 1.0;
-const LOCAL_SUN: vec2<f32> = vec2<f32>(0.1, 0.3);
 // The glare (after Gran Turismo 7, SIGGRAPH 2025 Physically Based Shading course; until 2026-11-05 an even blur of 6%
 // of the frame): the frame's light spread by a camera's diffraction, the Airy pattern of a round aperture, whose light
 // beyond a radius r is J0(x)^2 + J1(x)^2 with x = pi r / (lambda N), about 2 / (pi x) past the first ring. The glare
@@ -187,6 +181,9 @@ const PI: f32 = 3.14159265;
 const CHAIN_CAP: f32 = 30000.0;
 const GLARE_WHITE: f32 = 3.65;
 const BROAD_OVER_WHITE: f32 = 8.0;
+// In the in-car view the car's own pixels are left out of the broad light as the sun's height goes from `CAR_SUN.x` to
+// `.y` (by day; at night its lamps' light on the dash and bonnet stays).
+const CAR_SUN: vec2<f32> = vec2<f32>(0.1, 0.3);
 // How fast the exposure follows the frame, per second: faster down into a bright frame than up into a dark one.
 const ADAPT_SPEED: vec2<f32> = vec2<f32>(3.0, 1.2);
 
@@ -306,8 +303,18 @@ fn glare_tap(uv: vec2<f32>, offset: vec2<f32>, first: bool) -> vec4<f32> {
     if (!first) {
         return s;
     }
-    let broad = min(s.rgb, vec3<f32>(BROAD_OVER_WHITE * GLARE_WHITE / exposure.value));
-    return vec4<f32>(clamp(s.rgb, vec3<f32>(0.0), vec3<f32>(CHAIN_CAP)) * exposure.value, luminance(broad));
+    var broad = luminance(min(s.rgb, vec3<f32>(BROAD_OVER_WHITE * GLARE_WHITE / exposure.value)));
+    // In the in-car view the car's own paint (nearer than `Meter::fixed.y`) is not the scene's broad light: the white
+    // bonnet's glare exposed the road above it down by up to a stop (user: a dark band above the Fiat 131's bonnet; road
+    // 104 to 85 of 255 over 100 px, flat now).
+    if (meter.cabin_depth > 0.0) {
+        let size = vec2<i32>(textureDimensions(composite_depth));
+        let at = clamp(vec2<i32>((uv + offset * texel) * vec2<f32>(size)), vec2<i32>(0), size - 1);
+        if (textureLoad(composite_depth, at, 0) > meter.fixed.y) {
+            broad *= 1.0 - smoothstep(CAR_SUN.x, CAR_SUN.y, meter.to_sun.y);
+        }
+    }
+    return vec4<f32>(clamp(s.rgb, vec3<f32>(0.0), vec3<f32>(CHAIN_CAP)) * exposure.value, broad);
 }
 
 // The glare chain's first level: in `rgb` the exposed light weighted by the level's glare (`glare_weight`; exposed, so
@@ -568,13 +575,8 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(bloomed.a / LEVELS * exposure.value, 1e-9) / KEY);
     let ev100 = log2(max(exposure.adapting, 1e-6) * 100.0 / CALIBRATION);
-    var night = 1.0 - smoothstep(LOCAL_NIGHT.x, LOCAL_NIGHT.y, ev100);
-    var in_car_day = 0.0;
-    if (meter.cabin_depth > 0.0) {
-        in_car_day = smoothstep(LOCAL_SUN.x, LOCAL_SUN.y, meter.to_sun.y);
-        night *= 1.0 - in_car_day;
-    }
-    let begin = mix(LOCAL_FROM, LOCAL_NIGHT_FROM, night) + LOCAL_IN_CAR * in_car_day;
+    let night = 1.0 - smoothstep(LOCAL_NIGHT.x, LOCAL_NIGHT.y, ev100);
+    let begin = mix(LOCAL_FROM, LOCAL_NIGHT_FROM, night);
     let give = mix(LOCAL_GIVE, LOCAL_NIGHT_GIVE, night);
     let linear = max(lit * exposure.value * exp2(-give * max(broad - begin, 0.0)), vec3<f32>(0.0));
     let d = display();

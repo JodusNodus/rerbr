@@ -24,12 +24,11 @@ pub(crate) const SHADER: &str = concat!(include_str!("post.wgsl"), include_str!(
 pub(crate) struct Post {
     source_layout: wgpu::BindGroupLayout,
     composite_layout: wgpu::BindGroupLayout,
+    glare_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// The glare chain's first level, then the rest (`fs_glare_first`, `fs_glare_down`).
     down: [wgpu::RenderPipeline; 2],
     up: wgpu::RenderPipeline,
-    /// The exposure for the chain's levels (their glare's aperture).
-    glare: wgpu::BindGroup,
     composite: wgpu::RenderPipeline,
     /// Bins the scene's light (`cs_histogram`), then meters the bins into [`Post::exposure`] (`cs_meter`).
     meter: [wgpu::ComputePipeline; 2],
@@ -66,6 +65,9 @@ struct Targets {
     /// Reading the frame, then each level, for the next pass.
     sources: Vec<wgpu::BindGroup>,
     composite: wgpu::BindGroup,
+    /// The exposure for the chain's levels (their glare's aperture), the frame's depth and the [`Meter`], which tell
+    /// the car's pixels from the world's (`glare_tap`).
+    glare: wgpu::BindGroup,
     /// The light shafts the composite adds (linear light, a quarter of the frame's size; 1x1 without them).
     shafts: wgpu::TextureView,
     /// `cs_histogram`'s and `cs_meter`'s: the frame and its sampler (the frame alone for `cs_meter`, its height), then the depth, the
@@ -92,7 +94,8 @@ struct Meter {
     sharpen: f32,
     /// An HDR display's headroom (`HDR` in `post.wgsl`).
     headroom: f32,
-    /// `x`: [`Post::fixed_ev`], 0 metered.
+    /// `x`: [`Post::fixed_ev`], 0 metered; `y`: in the in-car view the depth nearer than which a pixel is the car's
+    /// ([`car_depth`]).
     fixed: [f32; 4],
     /// [`Sunlit`]: the view's inverse, the clouds' shadow map's parameters, the way to the sun and the sunny offset.
     inverse: [[f32; 4]; 4],
@@ -160,13 +163,22 @@ const JUMP: f32 = 1.0;
 /// How far from the eye the in-car view's cabin reaches, metres (`cs_meter` meters it apart).
 pub(crate) const CABIN_REACH: f32 = 2.0;
 
-/// In the in-car view of `view_projection` (reversed depth), the depth of a point [`CABIN_REACH`] ahead of the eye.
-pub(crate) fn cabin_depth(view_projection: glam::Mat4) -> f32 {
+/// How far from the eye the in-car view's bonnet and wings end, metres: what lies nearer is the car's own paint, which
+/// the local exposure's broad light leaves out (`glare_tap`; the road seen over the bonnet is further).
+pub(crate) const CAR_REACH: f32 = 3.5;
+
+/// In the in-car view of `view_projection` (reversed depth), the depth of a point `reach` ahead of the eye.
+fn depth_ahead(view_projection: glam::Mat4, reach: f32) -> f32 {
     // The clip w is the distance along the view, so its row is the view's axis.
     let (z, w) = (view_projection.row(2), view_projection.row(3));
     let eye = crate::camera::eye(view_projection);
-    let ahead = (eye + w.truncate().normalize() * CABIN_REACH).extend(1.0);
+    let ahead = (eye + w.truncate().normalize() * reach).extend(1.0);
     z.dot(ahead) / w.dot(ahead)
+}
+
+/// The depths of [`CABIN_REACH`] and [`CAR_REACH`] ahead of the eye (reversed: the nearer, the deeper).
+pub(crate) fn cabin_depths(view_projection: glam::Mat4) -> [f32; 2] {
+    [CABIN_REACH, CAR_REACH].map(|reach| depth_ahead(view_projection, reach))
 }
 
 impl Post {
@@ -223,7 +235,7 @@ impl Post {
         };
         let glare_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post glare"),
-            entries: &[texture_entry(1, STORAGE)],
+            entries: &[texture_entry(1, STORAGE), texture_entry(3, depth_binding()), texture_entry(4, UNIFORM)],
         });
         let down = ["fs_glare_first", "fs_glare_down"]
             .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), &[]));
@@ -257,11 +269,6 @@ impl Post {
             device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
         };
         let exposure = buffer("exposure", 32, wgpu::BufferUsages::STORAGE);
-        let glare = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("post glare"),
-            layout: &glare_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() }],
-        });
         let histogram = buffer("histogram", METER_SLOTS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings = gpu_util::uniform_buffer(device, "meter", size_of::<Meter>());
         let table = device.create_texture_with_data(
@@ -286,7 +293,7 @@ impl Post {
         let grade = table.create_view(&Default::default());
         let (scene, targets) = targets(
             device,
-            [&source_layout, &composite_layout],
+            [&source_layout, &composite_layout, &glare_layout],
             &sampler,
             [&exposure, &meter_settings, &histogram],
             &meter,
@@ -297,10 +304,10 @@ impl Post {
         Post {
             source_layout,
             composite_layout,
+            glare_layout,
             sampler,
             down,
             up,
-            glare,
             composite,
             meter,
             exposure,
@@ -323,7 +330,7 @@ impl Post {
     pub(crate) fn resize(&mut self, device: &wgpu::Device, size: (u32, u32), depth: &wgpu::TextureView) {
         (self.scene, self.targets) = targets(
             device,
-            [&self.source_layout, &self.composite_layout],
+            [&self.source_layout, &self.composite_layout, &self.glare_layout],
             &self.sampler,
             [&self.exposure, &self.meter_settings, &self.histogram],
             &self.meter,
@@ -345,8 +352,8 @@ impl Post {
 
     /// Writes the frame in [`Post::scene`] into `target`, all of it, or keeping the rest, into its part `viewport` (x,
     /// y, width and height in pixels: a spanned display's third, `crate::triple`); its exposure eased from the last frame's
-    /// to `time` (seconds: a later view of the same frame keeps the first's); `cabin_depth` in the in-car view
-    /// ([`cabin_depth`]), else 0; graded by the frame's `conditions`, its sunny offset by the view's `sunlit` share.
+    /// to `time` (seconds: a later view of the same frame keeps the first's); `depths` in the in-car view
+    /// ([`cabin_depths`]), else 0; graded by the frame's `conditions`, its sunny offset by the view's `sunlit` share.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &mut self,
@@ -354,7 +361,7 @@ impl Post {
         encoder: &mut wgpu::CommandEncoder,
         (target, viewport): (&wgpu::TextureView, Option<[u32; 4]>),
         time: f32,
-        cabin_depth: f32,
+        [cabin_depth, car_depth]: [f32; 2],
         conditions: Conditions,
         sunlit: Sunlit,
     ) {
@@ -370,7 +377,7 @@ impl Post {
             saturation: conditions.saturation,
             sharpen: self.sharpen,
             headroom: self.headroom,
-            fixed: [self.fixed_ev, 0.0, 0.0, 0.0],
+            fixed: [self.fixed_ev, car_depth, 0.0, 0.0],
             inverse: sunlit.inverse.to_cols_array_2d(),
             clouds: sunlit.clouds,
             to_sun: sunlit.to_sun.extend(sunlit.stops).to_array(),
@@ -390,7 +397,7 @@ impl Post {
         }
         for (index, (level, source)) in t.levels.iter().zip(&t.sources).enumerate() {
             let pipeline = &self.down[usize::from(index > 0)];
-            gpu_util::full_screen_pass(encoder, "post", level, CLEAR, pipeline, &[source, &self.glare]);
+            gpu_util::full_screen_pass(encoder, "post", level, CLEAR, pipeline, &[source, &t.glare]);
         }
         for index in (1..t.levels.len()).rev() {
             let (level, source) = (&t.levels[index - 1], &t.sources[index + 1]);
@@ -414,7 +421,7 @@ impl Post {
 #[allow(clippy::too_many_arguments)]
 fn targets(
     device: &wgpu::Device,
-    [source_layout, composite_layout]: [&wgpu::BindGroupLayout; 2],
+    [source_layout, composite_layout, glare_layout]: [&wgpu::BindGroupLayout; 3],
     sampler: &wgpu::Sampler,
     [exposure, meter_settings, histogram]: [&wgpu::Buffer; 3],
     [binning, metering]: &[wgpu::ComputePipeline; 2],
@@ -492,7 +499,16 @@ fn targets(
         TextureView(grade),
     ];
     let composite = gpu_util::bind_group(device, "post bloom", composite_layout, &resources);
-    (scene, Targets { levels, sources, composite, shafts, meter })
+    let glare = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("post glare"),
+        layout: glare_layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: TextureView(depth) },
+            wgpu::BindGroupEntry { binding: 4, resource: meter_settings.as_entire_binding() },
+        ],
+    });
+    (scene, Targets { levels, sources, composite, glare, shafts, meter })
 }
 
 #[cfg(test)]
@@ -524,10 +540,11 @@ mod tests {
             let clip = view_projection * p.extend(1.0);
             clip.z / clip.w
         };
-        let at = cabin_depth(view_projection);
+        let [at, car] = cabin_depths(view_projection);
         assert!((at - depth(eye + forward * CABIN_REACH)).abs() < 1e-5);
         // Reversed: the cabin is nearer, so deeper.
         assert!(depth(eye + forward * 1.0) > at && depth(eye + forward * 5.0) < at);
+        assert!((car - depth(eye + forward * CAR_REACH)).abs() < 1e-5 && car < at);
     }
 }
 

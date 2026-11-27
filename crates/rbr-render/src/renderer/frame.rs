@@ -329,7 +329,7 @@ impl Renderer {
             shafts.draw(&self.queue, encoder, self.post.shafts(), sun.as_ref(), beams.as_ref());
             span(&mut profiler, encoder, "light shafts", t);
         }
-        let cabin_depth = if self.outside_view { 0.0 } else { crate::post::cabin_depth(view_projection) };
+        let cabin_depths = if self.outside_view { [0.0; 2] } else { crate::post::cabin_depths(view_projection) };
         let mut conditions = crate::post::conditions(&self.atmosphere);
         let mut sunlit = crate::post::Sunlit::default();
         // With the sky's tables the stage's light is physical, pre-exposed by theirs.
@@ -349,7 +349,7 @@ impl Renderer {
         }
         let t = mark(&mut profiler, encoder);
         let viewport = frame_view.at.map(|(x, y)| [x, y, output.0, output.1]);
-        self.post.draw(&self.queue, encoder, (target, viewport), self.time, cabin_depth, conditions, sunlit);
+        self.post.draw(&self.queue, encoder, (target, viewport), self.time, cabin_depths, conditions, sunlit);
         span(&mut profiler, encoder, "post (bloom, tone)", t);
         self.profiler = profiler;
         stats
