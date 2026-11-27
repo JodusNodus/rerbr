@@ -235,14 +235,18 @@ impl Form {
                 ui.set_max_width(680.0);
                 self.drop_zone_ui(ui);
                 ui.add_space(20.0);
+                // The result of a drop is under the drop zone; the lists are reference.
+                if !self.content.notice.is_empty() {
+                    self.last_import_ui(ui);
+                    ui.add_space(20.0);
+                }
+                self.supported_ui(ui);
+                ui.add_space(20.0);
                 kit::group_label(ui, "From a game you own", None);
                 if self.dirt_card_ui(ui) {
                     self.open_dirt();
                 }
-                ui.add_space(20.0);
-                self.last_import_ui(ui);
                 ui.add_space(10.0);
-                kit::hint(ui, "Installers other than RBR Czech's can't be read: extract them first.");
             });
         });
     }

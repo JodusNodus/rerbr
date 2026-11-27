@@ -20,7 +20,8 @@ pub fn drop_works() -> bool {
 }
 
 /// The hint over the window while files hover over it.
-const HINT: &str = "Drop to add\nStages, cars, co-drivers, pace notes, or the game disc image (.iso)";
+const HINT: &str =
+    "Drop to add\nStages, Assetto Corsa tracks, cars, skins, co-drivers, pace notes, NGP or the game disc";
 /// What the hint says while the viewer runs.
 const CLOSE_FIRST: &str = "Close the drive first\nThen drop again";
 

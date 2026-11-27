@@ -11,8 +11,9 @@
 //! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`).
 //! DiRT Rally stages are the exception: they come from the player's own install, chosen in the picker (`dirt_page`), and
 //! `dirt` runs them as an Add run.
-//! Installers (other than RBR Czech's), encrypted stages and anything unknown are refused with the reason. A new kind or container
-//! is one module and one line below.
+//! Installers (other than RBR Czech's), encrypted stages and anything unknown are refused with the reason. A new kind
+//! is one module, one line in [`KINDS`] and one row in [`SUPPORTED`]; a new container is one module and one line in
+//! `source::SOURCES`, and a word in [`ARCHIVES`].
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -43,6 +44,22 @@ const KINDS: &[&dyn Kind] = &[
     &kind::skin::Skin,
     &kind::unknown::Unknown,
 ];
+
+/// What the Import page says the Add takes, a row for each kind: its name and what it takes. Keep it with [`KINDS`].
+pub const SUPPORTED: &[(&str, &str)] = &[
+    ("Stages", "BTB stages, RallySimFans and classic stages, RBR Czech .exe installers (read, never run)"),
+    ("Assetto Corsa tracks", "A track's folder, .zip, .7z or .rar: converted to a stage for each layout"),
+    ("Cars", "NGP car packs: the physics .zip with its model and sound-bank .7z, added together"),
+    ("Skins", "A folder or archive with a textures folder of .dds files"),
+    ("Co-drivers, pace notes", "Voice packs and pace-note packs, as a folder or archive"),
+    ("NGP, the game disc", "NGP's package (.7z or folder); the retail disc as an .iso or a folder"),
+];
+
+/// The containers the Import page says the Add opens, and what it cannot read.
+pub const ARCHIVES: &str =
+    "Opens .zip, .7z (also split .7z.001), .rar and plain folders. Your downloads aren't changed.";
+pub const REFUSED: &str = "Can't be added: other installers (.msi, or an .exe that isn't RBR Czech's: extract it with \
+                           7-Zip first) and stages encrypted for the RBR Czech plugin or RallySimFans.";
 
 /// A source's name without its archive end.
 pub fn stem(name: &str) -> &str {
@@ -312,7 +329,7 @@ mod tests {
         assert!(has("ok Added Voice (co-driver): pick it in Co-drivers"), "{got:?}");
         assert!(has("no Couldn't add stage.rar: can't read it"), "{got:?}");
         assert!(has("no Couldn't add Setup.exe: installers can't be read: extract it with 7-Zip"), "{got:?}");
-        assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds BTB stages"), "{got:?}");
+        assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds stages"), "{got:?}");
         assert!(has("ok Disc image RBR.iso"), "{got:?}");
         assert!(has("no Couldn't add gone.zip: it doesn't exist"), "{got:?}");
         assert!(done.iter().any(|o| o.goto == Some(Goto::Disc(dir.join("drop/RBR.iso")))));

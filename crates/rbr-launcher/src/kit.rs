@@ -133,11 +133,16 @@ impl Rows<'_> {
     /// A row of the panel's full width: `content` has the row's padding (14 px sides, at least 42 px high), laid out
     /// left to right and centred.
     pub fn full<R>(&mut self, content: impl FnOnce(&mut Ui) -> R) -> R {
+        self.sized(42.0, content)
+    }
+
+    /// [`Rows::full`] at least `height` high, for a denser list.
+    pub fn sized<R>(&mut self, height: f32, content: impl FnOnce(&mut Ui) -> R) -> R {
         self.divider();
         let width = self.ui.available_width();
         self.ui
             .allocate_ui_with_layout(Vec2::new(width, 0.0), Layout::left_to_right(Align::Center), |ui| {
-                ui.set_min_height(42.0);
+                ui.set_min_height(height);
                 ui.set_width(width);
                 Frame::new()
                     .inner_margin(Margin::symmetric(14, 0))

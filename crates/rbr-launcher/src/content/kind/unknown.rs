@@ -4,7 +4,9 @@ use super::{Ctx, Found, Item, Kind};
 use crate::content::source::Source;
 use crate::content::Outcome;
 
-pub const UNKNOWN: &str = "not recognised: ReRBR adds BTB stages, co-drivers, pace notes, NGP car packs and NGP";
+pub const UNKNOWN: &str =
+    "not recognised: ReRBR adds stages (BTB, classic, Assetto Corsa tracks), NGP car packs, skins, \
+                           co-drivers, pace notes, NGP and the game disc";
 
 pub struct Unknown;
 

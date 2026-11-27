@@ -261,8 +261,10 @@ impl Form {
         let title = if drop { "Drop files or folders here" } else { "Add files or folders" };
         zone.label(RichText::new(title).size(15.0).family(semibold()).color(TEXT));
         zone.add_space(2.0);
-        let what = "Stages, cars, skins, co-drivers, pace notes, NGP or the game disc";
+        let what = "Stages, Assetto Corsa tracks, cars, skins, co-drivers, pace notes, NGP or the game disc";
         zone.label(RichText::new(what).color(TEXT_2));
+        zone.add_space(2.0);
+        zone.label(RichText::new("As .zip, .7z, .rar, folders or RBR Czech .exe installers").size(12.0).color(TEXT_3));
         zone.add_space(14.0);
         if let Some(job) = &self.content.job {
             let at = zone.available_width() / 2.0 - 130.0;
@@ -282,15 +284,16 @@ impl Form {
             files = ui
                 .add_enabled(idle, button("Choose files…").min_size(size))
                 .on_hover_text(
-                    "Choose downloads: BTB stages, NGP car packs, car skins, co-drivers, pace notes or NGP. ReRBR \
-                     works out what each is and adds it; the downloads are not changed.",
+                    "Choose downloads: stages (BTB, classic, RBR Czech .exe installers), Assetto Corsa tracks, NGP \
+                     car packs, car skins, co-drivers, pace notes or NGP. ReRBR works out what each is and adds \
+                     it; the downloads are not changed.",
                 )
                 .clicked();
             folder = ui
                 .add_enabled(idle, button("Choose folder…").min_size(size))
                 .on_hover_text(
-                    "Choose an extracted download: a stage's folder, a folder of stages, a car skin, a co-driver or a \
-                     pace notes folder, or the disc.",
+                    "Choose an extracted download: a stage's folder, a folder of stages, an Assetto Corsa track, a \
+                     car skin, a co-driver or a pace notes folder, or the disc.",
                 )
                 .clicked();
         });
@@ -307,6 +310,24 @@ impl Form {
                 self.add_content(vec![PathBuf::from(path)]);
             }
         }
+    }
+
+    /// What the Add takes, a row for each kind, then the containers it opens and what it refuses ([`super::SUPPORTED`]).
+    pub fn supported_ui(&self, ui: &mut egui::Ui) {
+        kit::group_label(ui, "What you can add", None);
+        kit::panel(ui, |rows| {
+            for (kind, what) in super::SUPPORTED {
+                rows.sized(32.0, |ui| {
+                    // The kinds in a column of their own, the same width on every row.
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(160.0, 18.0), egui::Sense::hover());
+                    let font = egui::TextStyle::Body.resolve(ui.style());
+                    ui.painter().text(rect.left_center(), egui::Align2::LEFT_CENTER, kind, font, TEXT_LABEL);
+                    ui.add(egui::Label::new(RichText::new(*what).size(12.0).color(TEXT_2)).wrap());
+                });
+            }
+            rows.hint(super::ARCHIVES);
+            rows.hint(super::REFUSED);
+        });
     }
 
     /// Last import: every outcome with its own Open link, Clear, and what is refused.
