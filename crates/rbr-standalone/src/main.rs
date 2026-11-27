@@ -233,6 +233,7 @@ fn live(args: &Args, data: &Data, race: &boot::Race, stage: &StageData) -> ExitC
         if let Some(trail) = args.ffb_tyres {
             live.set_ffb_tyres(trail, args.ffb_levers, args.ffb_surface);
         }
+        live.set_steering(args.steering);
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.keeps_records() { saves } else { saves.dry() });

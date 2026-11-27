@@ -4,6 +4,7 @@
 //! `rbr-gameplay/README.md` (git 9c28c0b8); the arithmetic is the asm's (f32 at each operation, the order of the operands as compiled).
 
 use crate::ini::Ini;
+use crate::steering::Steering;
 use rbr_formats::saves::profile::{FilterCell, FilterChannel, InputFilter};
 
 /// Channels: 0 steering (raw +0x14), then 1 to 4 (raw +0x18, +0x1c, +0x20, +0x24).
@@ -35,7 +36,7 @@ pub struct Cell {
 
 impl Cell {
     /// `E16_InitGrid` (0x48bb70): zero, with the linear term 1.0.
-    const INITIAL: Self = Self {
+    pub const INITIAL: Self = Self {
         active: false,
         nonlinear: false,
         lin: 1.0,
@@ -345,11 +346,22 @@ pub struct Filter {
     input: Raw,
     prev: [f32; CHANNELS],
     speed: f32,
+    /// Ours beside the grid for the steering channel (`crate::steering`); the default leaves the grid's.
+    steering: Steering,
 }
 
 impl Filter {
     pub fn new(grid: Grid) -> Self {
-        Self { grid, flags: 0, input: Raw::default(), prev: [0.0; CHANNELS], speed: 0.0 }
+        Self { grid, flags: 0, input: Raw::default(), prev: [0.0; CHANNELS], speed: 0.0, steering: Steering::default() }
+    }
+
+    /// The filter with ours for the steering channel ([`Steering::steer`]).
+    pub fn with_steering(self, steering: Steering) -> Self {
+        Self { steering, ..self }
+    }
+
+    pub fn steering(&self) -> Steering {
+        self.steering
     }
 
     /// `E16Filter::NotifyB` (0x48ab40): stores one poll's control.
@@ -367,8 +379,13 @@ impl Filter {
     /// `E16Filter::Tic` (0x48c500): filters every channel once from its raw value and its last output, and clears the
     /// accumulated flags. `dt` is the physics step (`MaxTimeStep`).
     pub fn tic(&mut self, dt: f32) -> Filtered {
-        let channels: [f32; CHANNELS] =
-            std::array::from_fn(|i| step(self.grid.cell(i), self.input.channels[i], self.prev[i], dt, self.speed));
+        let channels: [f32; CHANNELS] = std::array::from_fn(|i| {
+            let (cell, a) = match i {
+                0 => self.steering.steer(self.grid.select[0], self.grid.cell(0), self.input.channels[0], self.speed),
+                _ => (*self.grid.cell(i), self.input.channels[i]),
+            };
+            step(&cell, a, self.prev[i], dt, self.speed)
+        });
         let out = Filtered {
             flags: self.flags,
             aux: self.input.aux,

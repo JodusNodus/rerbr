@@ -36,8 +36,10 @@ pub const ACCEPT_MESSAGE: u8 = 0x80;
 /// Action flag (ours): the player confirmed the pause menu's retire (`rbr_gameplay::pause_menu::Item::Retire`); not a
 /// car control either.
 pub const RETIRE: u8 = 0x08;
-/// The filter's cells (`rbr_gameplay::filter::Grid`): a device axis and a digital button.
+/// The filter's cells (`rbr_gameplay::filter::Grid`): a device axis, a gamepad stick (ours: the 1.02 poll never
+/// selects it, `rbr_gameplay::steering`) and a digital button.
 pub const CELL_AXIS: u8 = 0;
+pub const CELL_STICK: u8 = 1;
 pub const CELL_BUTTON: u8 = 3;
 const AUX_BIT: u32 = 1 << 24;
 

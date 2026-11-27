@@ -37,6 +37,7 @@ same paths.
 | ReRBR experimental physics (built on NGP 7): engine models | `notes/engine-model.md` |
 | Tyre model (brush-v1, in development, not released); NGP's tyre as it runs, published targets | `notes/tyre-model.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |
+| Steering input (ours): sticks and keys, the steering filter's additions | `notes/steering-input.md` |
 | Harness, recordings, masks | `notes/verification.md`, `harness/README.md` |
 | Third-party references and licences | `notes/references/README.md` |
 

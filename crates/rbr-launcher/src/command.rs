@@ -817,6 +817,8 @@ impl Form {
                 args.extend(["--ffb-surface".to_owned(), SURFACE_WEIGHT.to_owned()]);
             }
         }
+        // The stick's and the keys' steering (ours, `rbr_gameplay::steering`): flags, so a replay steps with them.
+        args.extend(self.bindings.steering.stepping_args());
         if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
             args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
         }

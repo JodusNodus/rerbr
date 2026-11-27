@@ -76,6 +76,7 @@ use rbr_gameplay::markers::MarkerEvent;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_clock::RaceClock;
 use rbr_gameplay::stage::State;
+use rbr_gameplay::steering::Steering;
 use rbr_physics::car_body::layout::CarView;
 use rbr_physics::mem::Mem;
 use rbr_physics::store::typed::Typed;
@@ -431,6 +432,13 @@ impl<'a> Live<'a> {
         self.playback.runner.keep_steer_torques = levers || surface.is_some();
         self.ffb_levers = levers.then(crate::tyre_ffb::Levers::default);
         self.ffb_surface = surface.map(crate::surface_ffb::Texture::new);
+    }
+
+    /// Ours for a gamepad stick and the keys beside the filter's grid (`--stick-steering`, `--key-steering`), kept by
+    /// a restart and by a profile's grid ([`Live::set_saves`]).
+    pub fn set_steering(&mut self, steering: Steering) {
+        self.game.set_steering(steering);
+        self.initial_game.set_steering(steering);
     }
 
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:

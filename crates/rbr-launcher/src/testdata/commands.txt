@@ -93,6 +93,10 @@ on
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == everything changed
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -205,6 +209,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == random weather, advanced shifter
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -322,6 +330,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == NGP
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -417,6 +429,10 @@ on
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == RSF car on a retail stage
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -532,6 +548,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == RSF car and stage
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -647,6 +667,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == triple screens
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -759,6 +783,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == triple screens on three monitors
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1320,6 +1348,10 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == force feedback sensitivity
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1435,6 +1467,10 @@ player
 90,100,110
 --head-gasket-durability
 10
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == force feedback per car
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1550,6 +1586,10 @@ player
 80,90,100
 --head-gasket-durability
 10
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == force feedback per car, its steering load tracked
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1665,6 +1705,10 @@ player
 80,90,100
 --head-gasket-durability
 10
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 == UDP telemetry
 RBR_DATA=<data>
 RBR_PATCH=<patch>
@@ -1776,5 +1820,9 @@ pack-mitsubishilancerevoixn4
 player
 --ngp-physics
 <ngp>
+--stick-steering
+3,5,100
+--key-steering
+2.5,5
 --telemetry-udp
 127.0.0.1:6776

@@ -9,7 +9,8 @@
 
 use rbr_gameplay::control::NGP_GEAR_PRESS;
 use rbr_gameplay::poll::{keyboard, Device as PollDevice, Poll, DEFAULT_RANGE};
-use rbr_recording::input::CELL_BUTTON;
+use rbr_gameplay::steering;
+use rbr_recording::input::{CELL_AXIS, CELL_BUTTON, CELL_STICK};
 
 use crate::bindings::{dik, Action, Bindings, Device, ACTIONS};
 use crate::live::Controls;
@@ -127,6 +128,11 @@ impl Joysticks {
         self.list[k].1.state()
     }
 
+    /// The other axis of the gamepad stick joystick `k`'s axis `axis` is on (X with Y), if it is one.
+    pub fn stick_partner(&self, k: usize, axis: u32) -> Option<u32> {
+        partner(self.list[k].1.sticks(), axis)
+    }
+
     /// Joystick `k`'s axis `axis` where it first reported, -1..1 as [`values`] has it; `None` until it has. Until then
     /// the state holds a placeholder (the centre), not where the axis is: a device that reports only when something
     /// changes has no value for an axis nothing has moved.
@@ -161,6 +167,11 @@ pub struct Input {
     lock: Option<Lock>,
     /// How far past full lock the last poll found the wheel, degrees, signed as the steering ([`SoftLock::past`]).
     pub past_lock: f32,
+    /// The steering's axis is a gamepad stick's: its poll device and the entry of the stick's other axis
+    /// ([`steering::stick`]).
+    stick: Option<(usize, usize)>,
+    /// The stick's dead zone and saturation, shares of its travel.
+    stick_shares: (f32, f32),
 }
 
 /// A soft lock on joystick `joystick`'s axis `axis`, `invert` when the steering inverts it.
@@ -207,7 +218,27 @@ impl Input {
             let joystick = (0..joysticks.len()).position(|k| joysticks.device(k) == pad.device)?;
             Some(Lock { soft, joystick, axis: axis as usize, invert: bindings.invert.steering })
         });
-        Input { poll, joysticks, pads, missing, lock, past_lock: 0.0 }
+        let stick = bindings.steering_axis().and_then(|p| {
+            let Target::Axis(axis) = p.object else { return None };
+            let k = (0..joysticks.len()).position(|k| joysticks.device(k) == p.device)?;
+            let other = joysticks.stick_partner(k, axis)?;
+            Some((k + 1, poll.devices[k + 1].find(Target::Axis(other))?))
+        });
+        Input {
+            poll,
+            joysticks,
+            pads,
+            missing,
+            lock,
+            past_lock: 0.0,
+            stick,
+            stick_shares: bindings.steering.stick_shares(),
+        }
+    }
+
+    /// The steering is a gamepad stick's ([`steering::stick`], the filter's stick cell).
+    pub fn steers_with_stick(&self) -> bool {
+        self.stick.is_some()
     }
 
     /// The joysticks open and not answering, by name.
@@ -254,7 +285,14 @@ impl Input {
             let v = entry.value();
             pads[a as usize] = if entry.is_axis() { (v + 1.0) * 0.5 } else { v };
         }
-        let raw = self.poll.tic();
+        let mut raw = self.poll.tic();
+        // A stick's steering: read with its other axis, then the filter's stick cell (ours, `rbr_gameplay::steering`).
+        if let Some((d, other)) = self.stick.filter(|_| raw.select[0] == u32::from(CELL_AXIS)) {
+            let (dead_zone, saturation) = self.stick_shares;
+            let y = self.poll.devices[d].entries[other].value();
+            raw.channels[0] = steering::stick(raw.channels[0], y, dead_zone, saturation);
+            raw.select[0] = u32::from(CELL_STICK);
+        }
         let gears = self.poll.gear_actions();
         let bits = |test: &dyn Fn(Option<f32>) -> bool| (0..8).filter(|&k| test(gears[k])).fold(0, |b, k| b | 1 << k);
         let [steering, throttle, brake, handbrake, clutch] = raw.channels;
@@ -352,6 +390,23 @@ pub fn values(state: &[u8], axes: u32, buttons: u32) -> impl Iterator<Item = (Ta
     (0..axes).map(move |k| (Target::Axis(k), axis(k))).chain((0..buttons).map(move |k| (Target::Button(k), button(k))))
 }
 
+/// The other axis of the stick `axis` is on, of a joystick's sticks (`[x, y]` axis pairs).
+fn partner(sticks: &[[u32; 2]], axis: u32) -> Option<u32> {
+    sticks.iter().find_map(|&[x, y]| (axis == x).then_some(y).or((axis == y).then_some(x)))
+}
+
+/// A gamepad's sticks in its SDL mapping (`leftx:a0,lefty:a1,rightx:a2,righty:a3`): each stick's joystick axes, `[x,
+/// y]`; a stick on anything but two whole axes is left out.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+fn mapping_sticks(mapping: &str) -> Vec<[u32; 2]> {
+    let axis = |name: &str| {
+        mapping
+            .split(',')
+            .find_map(|field| field.strip_prefix(name)?.strip_prefix(":a")?.trim_end_matches('~').parse().ok())
+    };
+    [("leftx", "lefty"), ("rightx", "righty")].into_iter().filter_map(|(x, y)| Some([axis(x)?, axis(y)?])).collect()
+}
+
 #[cfg(target_os = "linux")]
 mod imp {
     pub use super::evdev::Joystick;
@@ -387,6 +442,10 @@ mod evdev {
     const BTN_TRIGGER_HAPPY: u32 = 0x2c0;
     const ABS_X: u32 = 0x00;
     const ABS_Y: u32 = 0x01;
+    const ABS_RX: u32 = 0x03;
+    const ABS_RY: u32 = 0x04;
+    /// The kernel's gamepad mark (`BTN_GAMEPAD`, its south face button; `Documentation/input/gamepad.rst`).
+    const BTN_SOUTH: u32 = 0x130;
     const ABS_HAT0X: u32 = 0x10;
     const ABS_HAT3Y: u32 = 0x17;
     const EV_KEY: u32 = 1;
@@ -433,6 +492,8 @@ mod evdev {
         reported: bool,
         /// The state as last read ([`wine::objects`]'s layout).
         state: Vec<u8>,
+        /// A gamepad's sticks, `[x, y]` axes (`ABS_X` with `ABS_Y`, `ABS_RX` with `ABS_RY`).
+        sticks: Vec<[u32; 2]>,
     }
 
     impl Joystick {
@@ -491,7 +552,10 @@ mod evdev {
                 .filter_map(|k| abs(&file, k).map(|i| (k, i.minimum, i.maximum, i.value, actual)))
                 .collect();
             let state = wine::state(&vec![CENTRE; axes.len()], &vec![false; keys.len()]);
-            let mut joystick = Joystick { file, name, axes, keys, reported: false, state };
+            let index = |code: u32| axes.iter().position(|a| a.0 == code).map(|k| k as u32);
+            let pairs: &[(u32, u32)] = if bit(keybits, BTN_SOUTH) { &[(ABS_X, ABS_Y), (ABS_RX, ABS_RY)] } else { &[] };
+            let sticks = pairs.iter().filter_map(|&(x, y)| Some([index(x)?, index(y)?])).collect();
+            let mut joystick = Joystick { file, name, axes, keys, reported: false, state, sticks };
             // SDL sends the buttons held when it opens the device; the axes not.
             let mut keybits = [0u8; KEY_BYTES];
             joystick.reported =
@@ -513,6 +577,10 @@ mod evdev {
 
         pub fn state(&self) -> &[u8] {
             &self.state
+        }
+
+        pub fn sticks(&self) -> &[[u32; 2]] {
+            &self.sticks
         }
 
         /// The axis's dinput value when it was opened, once it has changed or was read `actual`: what winebus reports
@@ -574,7 +642,8 @@ mod sdl {
     use std::ffi::CStr;
 
     use rbr_gameplay::poll::wine;
-    use sdl3_sys::init::SDL_INIT_JOYSTICK;
+    use sdl3_sys::gamepad::{SDL_GetGamepadMappingForID, SDL_IsGamepad};
+    use sdl3_sys::init::{SDL_INIT_GAMEPAD, SDL_INIT_JOYSTICK};
     use sdl3_sys::joystick::*;
 
     use crate::bindings::Device;
@@ -586,7 +655,9 @@ mod sdl {
 
     impl Context {
         pub fn new() -> Context {
-            Context(Subsystem::init(SDL_INIT_JOYSTICK).map_err(|e| eprintln!("devices: no joysticks: {e}")).ok())
+            // The gamepads' too, for their mappings (a stick's axes: `Joystick::sticks`).
+            let flags = SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD;
+            Context(Subsystem::init(flags).map_err(|e| eprintln!("devices: no joysticks: {e}")).ok())
         }
 
         /// SDL reads its devices and looks for new ones; each joystick takes its state at its [`Joystick::read`].
@@ -641,6 +712,9 @@ mod sdl {
         buttons: u32,
         /// The state as last read ([`wine::objects`]'s layout).
         state: Vec<u8>,
+        /// A gamepad's sticks, `[x, y]` axes, from its SDL mapping.
+        #[cfg_attr(target_os = "linux", allow(dead_code))]
+        sticks: Vec<[u32; 2]>,
     }
 
     impl Joystick {
@@ -654,7 +728,7 @@ mod sdl {
             let mut out = Vec::new();
             for (device, id) in context.ids() {
                 // SAFETY: `id` is one of SDL's joysticks; the name is SDL's string, copied.
-                let (handle, name, axes, buttons) = unsafe {
+                let (handle, name, axes, buttons, sticks) = unsafe {
                     let handle = SDL_OpenJoystick(id);
                     if handle.is_null() {
                         eprintln!("devices: {}: {}", device.format(), crate::ffb::sdl_error());
@@ -664,15 +738,24 @@ mod sdl {
                     let name =
                         if name.is_null() { String::new() } else { CStr::from_ptr(name).to_string_lossy().into() };
                     let count = |n: i32| u32::try_from(n).unwrap_or(0);
+                    let mapping = if SDL_IsGamepad(id) { SDL_GetGamepadMappingForID(id) } else { std::ptr::null_mut() };
+                    let sticks = if mapping.is_null() {
+                        Vec::new()
+                    } else {
+                        let sticks = super::mapping_sticks(&CStr::from_ptr(mapping).to_string_lossy());
+                        sdl3_sys::stdinc::SDL_free(mapping.cast());
+                        sticks
+                    };
                     (
                         Handle(handle),
                         name,
                         count(SDL_GetNumJoystickAxes(handle)),
                         count(SDL_GetNumJoystickButtons(handle)),
+                        sticks,
                     )
                 };
                 let state = wine::state(&vec![wine::axis(0); axes as usize], &vec![false; buttons as usize]);
-                let mut joystick = Joystick { handle, name, axes, buttons, state };
+                let mut joystick = Joystick { handle, name, axes, buttons, state, sticks };
                 joystick.read(context);
                 out.push((device, joystick));
             }
@@ -693,6 +776,11 @@ mod sdl {
 
         pub fn state(&self) -> &[u8] {
             &self.state
+        }
+
+        #[cfg_attr(target_os = "linux", allow(dead_code))]
+        pub fn sticks(&self) -> &[[u32; 2]] {
+            &self.sticks
         }
 
         /// The axis's dinput value at its first report (SDL knows it at once for the gamepads it has drivers for);
@@ -752,6 +840,15 @@ mod tests {
         assert_eq!(axis(&s), -1.0);
         let mut s = state(-1.0);
         assert!((soft_lock_axis(&mut s, Lock { invert: true, ..lock }) - 180.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_gamepad_s_sticks_from_its_mapping() {
+        let ds5 = "030000004c050000e60c000000016800,PS5 Controller,a:b0,b:b1,leftx:a0,lefty:a1,rightx:a2,righty:a3~,\
+                   lefttrigger:a4,righttrigger:a5,platform:Mac OS X,";
+        assert_eq!(mapping_sticks(ds5), [[0, 1], [2, 3]]);
+        assert_eq!(mapping_sticks("x,wheel,leftx:a0,lefty:b4,"), Vec::<[u32; 2]>::new(), "a stick on a button");
+        assert_eq!((partner(&[[0, 1], [3, 4]], 4), partner(&[[0, 1]], 2)), (Some(3), None));
     }
 
     #[test]

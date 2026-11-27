@@ -17,6 +17,7 @@ use rbr_formats::rsf::settings::{personal, Sources};
 use rbr_formats::saves::action_map::Object;
 use rbr_gameplay::poll::Invert;
 use rbr_gameplay::race_options::DriverAids;
+use rbr_gameplay::steering;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
@@ -572,6 +573,11 @@ impl ControlsPage {
             left.add_space(14.0);
             kit::group_label(left, "Wheel buttons", None);
             kit::panel(left, |rows| self.pad_rows(rows, bindings, BUTTONS));
+            left.add_space(14.0);
+            if kit::group_label(left, "Gamepad stick and keys", Some("Defaults")) {
+                bindings.steering = steering::Settings::default();
+            }
+            kit::panel(left, |rows| steering_ui(rows, &mut bindings.steering));
 
             let right = &mut columns[1];
             kit::group_label(right, "Shifter", None);
@@ -1004,6 +1010,47 @@ fn aids_ui(rows: &mut Rows, aids: &mut DriverAids) {
 }
 
 /// The head gasket fix (NGP's `headGasketDurability`, 1 off).
+/// The steering of a gamepad stick and of the keys (`[steering]`, `rbr_gameplay::steering`): the stick's dead zone,
+/// saturation, turn and return times and speed curve, the keys' turn and return times. A wheel is not filtered.
+fn steering_ui(rows: &mut Rows, steering: &mut steering::Settings) {
+    let percent = |rows: &mut Rows, label: &str, value: &mut f32, range, help: &str| {
+        rows.row(label, |ui| {
+            ui.add(DragValue::new(value).range(range).speed(0.5).fixed_decimals(0).suffix(" %")).on_hover_text(help)
+        });
+    };
+    percent(rows, "Stick dead zone", &mut steering.stick_dead_zone, 0.0..=50.0, STICK_DEAD_ZONE_HELP);
+    percent(rows, "Stick saturation", &mut steering.stick_saturation, 50.0..=100.0, STICK_SATURATION_HELP);
+    seconds_row(rows, "Stick turn time", &mut steering.stick.rates.rise, TURN_HELP);
+    seconds_row(rows, "Stick return time", &mut steering.stick.rates.fall, RETURN_HELP);
+    let mut curve = steering.stick.curve * 100.0;
+    percent(rows, "Stick speed curve", &mut curve, steering::CURVE_RANGE, CURVE_HELP);
+    steering.stick.curve = curve / 100.0;
+    seconds_row(rows, "Key turn time", &mut steering.keys.rise, TURN_HELP);
+    seconds_row(rows, "Key return time", &mut steering.keys.fall, RETURN_HELP);
+    rows.hint("A gamepad stick and the keys steer through these. A wheel steers as it is turned.");
+}
+
+/// A rate (per second, `steering::RATE_RANGE`) shown and set as the seconds it takes across the whole lock.
+fn seconds_row(rows: &mut Rows, label: &str, rate: &mut f32, help: &str) {
+    let (low, high) = (*steering::RATE_RANGE.start(), *steering::RATE_RANGE.end());
+    let mut seconds = 1.0 / *rate;
+    rows.row(label, |ui| {
+        let drag =
+            DragValue::new(&mut seconds).range(1.0 / high..=1.0 / low).speed(0.005).fixed_decimals(2).suffix(" s");
+        if ui.add(drag).on_hover_text(help).changed() {
+            *rate = (100.0 / seconds).round() / 100.0;
+        }
+    });
+}
+
+const STICK_DEAD_ZONE_HELP: &str = "How far the stick moves from the centre before the wheels turn.";
+const STICK_SATURATION_HELP: &str = "How far the stick moves for full lock: below 100 %, before the stick's end.";
+const TURN_HELP: &str = "How long the wheels take from straight ahead to full lock.";
+const RETURN_HELP: &str = "How long the wheels take from full lock back to straight ahead.";
+const CURVE_HELP: &str = "How much of the stick's travel goes to small angles at speed: 0 % follows the stick \
+                          straight, 100 % is fitted to the lock drivers use at each speed. Full lock stays at the \
+                          stick's end at every speed, and a slide counts as slower.";
+
 fn head_gasket_ui(rows: &mut Rows, head_gasket: &mut i32) {
     let mut fix = *head_gasket > 1;
     if rows.switch_row("Head gasket durability fix", None, &mut fix).on_hover_text(HEAD_GASKET_HELP).changed() {

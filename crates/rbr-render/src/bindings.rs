@@ -36,6 +36,7 @@ use winit::keyboard::KeyCode;
 use crate::shifter;
 use rbr_formats::saves::action_map::{ActionMap, Object as Target};
 use rbr_gameplay::poll::{self, Invert};
+use rbr_gameplay::steering;
 
 /// A gamepad value above this presses a gear, restart or call-for-help action, and a move this far sets a binding.
 pub const PRESS: f32 = 0.5;
@@ -280,6 +281,9 @@ pub struct Bindings {
     pub invert: Invert,
     /// The poll's rate, Hz.
     pub input_rate: u32,
+    /// The stick's and the keys' steering (`[steering]`, `rbr_gameplay::steering`): the stick's dead zone and
+    /// saturation are the poll's ([`crate::devices::Input`]), the rest the stepping process's flags.
+    pub steering: steering::Settings,
 }
 
 impl Default for Bindings {
@@ -316,6 +320,7 @@ impl Default for Bindings {
             shifter: shifter::Settings::default(),
             invert: Invert::default(),
             input_rate: INPUT_RATE,
+            steering: steering::Settings::default(),
         }
     }
 }
@@ -332,9 +337,9 @@ fn invert_flags(invert: &mut Invert) -> [&mut bool; 6] {
 }
 
 impl Bindings {
-    /// The `[controls]` section of `text`; the defaults for whatever it leaves out.
+    /// The `[controls]` and `[steering]` sections of `text`; the defaults for whatever they leave out.
     pub fn parse(text: &str) -> Bindings {
-        let mut out = Bindings::default();
+        let mut out = Bindings { steering: steering::Settings::parse(text), ..Bindings::default() };
         let sections = rbr_formats::ini::parse(text).unwrap_or_default();
         let Some(section) = sections.iter().find(|s| s.name == "controls") else {
             return out;
@@ -390,6 +395,8 @@ impl Bindings {
             let pad = binding.pad.map(PadInput::format).unwrap_or_default();
             out.push_str(&format!("{0} = {key}\n{0} pad = {pad}\n", action.name()));
         }
+        out.push('\n');
+        out.push_str(&self.steering.to_text());
         out
     }
 
@@ -400,6 +407,11 @@ impl Bindings {
     /// The action `key` is bound to, if any.
     pub fn action_for_key(&self, key: KeyCode) -> Option<Action> {
         Action::ALL.into_iter().find(|&a| self.get(a).key == Some(key))
+    }
+
+    /// The steering's axis (both steering actions on one), if bound.
+    pub fn steering_axis(&self) -> Option<PadInput> {
+        self.shared_axis(Action::SteerLeft, Action::SteerRight)
     }
 
     /// The axis both actions' device inputs are, if they are the same one.
@@ -415,7 +427,7 @@ impl Bindings {
     /// The device poll's bindings (`rbr_gameplay::poll::Poll::bind`): per game action slot, its device (`None` the
     /// keyboard, whose objects are DIK codes) and object. One object per slot: the device input, else the key.
     pub fn slots(&self) -> Vec<(usize, Option<Device>, Target)> {
-        let steering = self.shared_axis(Action::SteerLeft, Action::SteerRight);
+        let steering = self.steering_axis();
         let combined = self.shared_axis(Action::Throttle, Action::Brake);
         let shared = [(poll::STEERING, steering), (poll::COMBINED, combined)];
         let mut out: Vec<_> = shared.iter().filter_map(|&(s, p)| Some((s, Some(p?.device), p?.object))).collect();

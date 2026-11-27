@@ -26,6 +26,7 @@ pub mod record;
 pub mod result;
 pub mod setup;
 pub mod stage;
+pub mod steering;
 pub mod tick;
 pub mod timing;
 pub mod weather;
