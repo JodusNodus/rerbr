@@ -884,8 +884,8 @@ fn mud_inside(in: Out, rim: f32, soft: f32) -> vec4<f32> {
 //   pivot toward the sun.
 const PANE_F0: f32 = 0.04;
 // The share of the faces' reflection of the cabin drawn (ours, the user's call: a less reflective interior; in full
-// the light dash and the wheel veiled the view).
-const CABIN_REFLECTED: f32 = 0.5;
+// the light dash and the wheel veiled the view; 0.5 still did in the Fiat 131's tan dash, 2026-11-27).
+const CABIN_REFLECTED: f32 = 0.3;
 // A pane cell's `edge` at 1, metres (`glass::gpu::PANE_EDGE`).
 const PANE_EDGE: f32 = 0.05;
 // The dust: the share of the sun's light on the pane it scatters toward the eye (a forward lobe, `DUST_G`, and a broad

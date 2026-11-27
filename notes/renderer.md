@@ -1231,7 +1231,7 @@ not ported.
   crescent (now 0.2 from 0.3), its outline 0.75 to 1 as dark, its highlight shifted. Outlines (`outline`): ragged 0.12
   to 0.28 (was 0.04 to 0.2; beads 0.15, were round), up to 0.35 longer one way, each its own way. Beads patchy over
   4 cm (0.25 to 1.5 of their share); rain and snow in gusts, +-0.5 over about 2 s (`GUSTS`). The cabin's reflection
-  in the windscreen at 0.5 (`CABIN_REFLECTED`). The pale shapes high in the GC8's windscreen at Luceram's hairpin are
+  in the windscreen at 0.5 (`CABIN_REFLECTED`; 0.3 since 2026-11-27, user: too strong in the Fiat 131). The pale shapes high in the GC8's windscreen at Luceram's hairpin are
   the stage (they stay with the pane and the film off). Cost within noise (GC8 Luceram heavy rain, drawn-only 20.38 to
   20.41 ms).
 - Beads at random and drops on the move (ours, 2026-11-02, user: drops "on a grid", "many are just static, sticky";
